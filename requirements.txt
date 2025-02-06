@@ -1,0 +1,15 @@
+h5py
+joblib
+matplotlib>=3.3.2
+multipletau>=0.3.3
+numpy>=1.19.4
+pandas>=1.1.4
+scipy
+tifffile>=2020.9.29
+seaborn
+imutils
+PyQt5
+nbformat
+ome_types
+czifile
+brighteyes_ism

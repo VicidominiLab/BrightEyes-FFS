@@ -1,0 +1,5 @@
+build/
+dist/
+src/brighteyes_ffs/fcs/__pycache__/
+src/brighteyes_ffs/fcs_gui/__pycache__/
+src/brighteyes_ffs/tools/__pycache__/

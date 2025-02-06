@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "brighteyes-ffs"
+version = "0.0.16"
+authors = [
+  { name="Eli Slenders", email="eli.slenders@iit.it" }
+]
+dependencies = [
+    "h5py",
+    "joblib",
+    "matplotlib>=3.3.2",
+    "multipletau>=0.3.3",
+    "numpy>=1.19.4",
+    "pandas>=1.1.4",
+    "scipy",
+    "tifffile>=2020.9.29",
+    "seaborn",
+    "imutils",
+	"nbformat",
+	"PyQt5",
+	"qdarkstyle",
+	"ome_types",
+	"czifile",
+	"pydantic<2.0",
+	"brighteyes_ism",
+]
+description = "Toolbox for analysing FCS/FFS data with array detectors"
+readme = "README.md"
+requires-python = ">=3.7"
+license = {file = "LICENSE.txt"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: OS Independent",
+]
+[project.urls]
+"Homepage" = "https://github.com/VicidominiLab/brighteyes-ffs"

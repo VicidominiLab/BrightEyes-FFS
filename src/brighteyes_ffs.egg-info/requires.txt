@@ -1,0 +1,17 @@
+h5py
+joblib
+matplotlib>=3.3.2
+multipletau>=0.3.3
+numpy>=1.19.4
+pandas>=1.1.4
+scipy
+tifffile>=2020.9.29
+seaborn
+imutils
+nbformat
+PyQt5
+qdarkstyle
+ome_types
+czifile
+pydantic<2.0
+brighteyes_ism
