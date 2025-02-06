@@ -10,9 +10,9 @@ The fcs module contains libraries for:
 
 The fcs_gui module contains libraries for:
 
-* Storing and loading FCS/FFS analysis sessions, as used in the GUI
+* Storing and loading FCS/FFS analysis sessions, as used in the GUI (https://github.com/VicidominiLab/BrightEyes-FFS-GUI)
 
-The dataio module contains libraries for:
+The tools module contains libraries for:
 
 * Fitting various models to data (polynomial, Gaussian, power law, etc.)
 * Stokes-Einstein relation
