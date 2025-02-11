@@ -1,6 +1,6 @@
 Metadata-Version: 2.2
 Name: brighteyes-ffs
-Version: 0.0.16
+Version: 0.0.17
 Summary: Toolbox for analysing FCS/FFS data with array detectors
 Author-email: Eli Slenders <eli.slenders@iit.it>
 Project-URL: Homepage, https://github.com/VicidominiLab/brighteyes-ffs

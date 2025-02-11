@@ -36,6 +36,26 @@ def spad_coord_from_det_numb(det):
 
 
 def spad_shift_vector_crosscorr(vector=[0, 0], n=5):
+    """
+    Return a list of all cross-correlations between two channels that are
+    displaced by a given shift vector. Used for STICS analysis.
+
+    Parameters
+    ----------
+    vector : list, optional
+        List with two elements [shifty, shiftx] in units of pixels.
+        The default is [0, 0].
+    n : int, optional
+        Number of detector elements of the square detector. The default is 5
+        for a 5x5 detector
+
+    Returns
+    -------
+    CC : list of strings
+        Each string correspond to a cross-correlation between two detector
+        elements whose displacement is given by the input vector.
+
+    """
     CC = []
     shifty = vector[0]
     shiftx = vector[1]

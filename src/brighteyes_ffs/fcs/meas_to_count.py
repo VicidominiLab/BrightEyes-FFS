@@ -107,9 +107,10 @@ def file_to_fcs_count(fname, datatype=np.uint16, n_points=-1, n_offset=0, h5data
                 if 'data' in keys:
                     key = 'data'
                 data = f[key]
-                data = data[:]
-                # flatten data to (t, c)
-                data = data.reshape(-1, data.shape[-1])
+                if len(np.shape(data)) > 2:
+                    # flatten data to (t, c)
+                    data = data[:]
+                    data = data.reshape(-1, data.shape[-1])
                 print(np.shape(data))
             if n_points == -1:
                 out = data[n_offset:]
@@ -212,7 +213,14 @@ def czi2h5(fname):
     with h5py.File(fname_h5, "w") as f:
         inf = f.create_group('configurationGUI_beforeStart')
         mdata = get_file_info_czi(fname)
-        inf.attrs['timebin_per_pixel'] = mdata.dwellTime
+        inf.attrs['nrep'] = 1
+        inf.attrs['nframe'] = 1
+        inf.attrs['ny'] = 1
+        inf.attrs['nx'] = 1
+        inf.attrs['range_z'] = 0
+        inf.attrs['range_y'] = 0
+        inf.attrs['range_x'] = 0
+        inf.attrs['timebin_per_pixel'] = len(out)
         inf.attrs['time_resolution'] = mdata.timeResolution
         f.create_dataset('data',data=out, compression="gzip")
     return fname_h5

@@ -2,7 +2,7 @@ import multipletau
 import matplotlib.pyplot as plt
 import numpy as np
 import re
-from os import getcwd
+import os
 import ntpath
 import scipy as spy
 from pathlib import Path
@@ -12,7 +12,7 @@ from .extract_spad_data import extract_spad_data
 from .distance2detelements import distance2detelements, spad_shift_vector_crosscorr
 from .distance2detelements import spad_coord_from_det_numb as coord
 from .get_fcs_info import get_file_info, get_metafile_from_file
-from .meas_to_count import file_to_fcs_count
+from .meas_to_count import file_to_fcs_count, czi2h5
 from .atimes2corr import atimes_2_corr
 from .timetrace2corr import tt2corr
 from .corr2csv import corr2csv
@@ -20,375 +20,162 @@ from .corr2csv import corr2csv
 from ..tools.plot_colors import plot_colors
 from ..tools.list_files import list_files
 from ..tools.bindata import bindata_chunks
+from ..tools.calcdist_from_coord import list_of_pixel_pairs_at_distance
 
 
 class Correlations:
     pass
 
-def fcs_sparse_matrices(fname, accuracy=16, split=10, time_trace=False, return_obj=False, averaging=None, root=0):
+    
+def fcs_load_and_corr_split(fname, list_of_g=['central', 'sum3', 'sum5', 'chessboard', 'ullr'], accuracy=16, split=10, time_trace=False, metadata=None, root=0, list_of_g_out=None, averaging=None, algorithm='multipletau'):
     """
-    Calculate correlations using spare matrices properties.
-    Author: Eleonora Perego
+    Load data from a file in chunks and calculate correlations.
 
     Parameters
     ----------
     fname : string
-        file name with fcs data.
+        File name.
+    list_of_g : list, optional
+        List of correlations to be calculated.
+        The default is ['central', 'sum3', 'sum5', 'chessboard', 'ullr'].
     accuracy : int, optional
         Accuracy of the autocorrelation function. The default is 16.
     split : float, optional
-        Number of seconds of each chunk to split the data into
-        E.g. split=10 will divide a 60 second stream in 6 ten-second
-        traces and calculate G for each  ividual trace. The default is 10.
+        Number of traces to split the data into
+        E.g. split=10 will divide a 60 second stream in 10 six second
+        traces and calculate G for each individual trace. The default is 10.
     time_trace : boolean, optional
         see output. The default is False.
-    return_obj : boolean, optional
-        Return data as 4D np.array() or object. The default is False.
+    metadata : None or object, optional
+        if None: metadata is extracted from .txt info file
+        if metadata Object: meta is given as input parameter. The default is None.
     root : int, optional
-        Used for GUI only. The default is 0.
-    averaging : list of list of two strings
-        Used for averaging multiple cross-correlations (for each chunk)
-        E.g. for having G.up_chunk0 = mean(det12x7_chunk0 and det11x6_chunk0)
-            and G.down_chunk0 = mean(det12x17_chunk0 and det11x16_chunk0)
-            etc.
-        Use: averaging = [['up', '12x7+11x6'], ['down', '12x17+11x16']]
+        used for GUI only to pass progress. The default is 0.
+    list_of_g_out : TYPE, optional
+        used for GUI only. The default is None.
 
     Returns
     -------
     G : object
-        np.array or object with autocorrelations.
+        Object with all autocorrelations
+        E.g. G.central contains the array with the central detector
+        element autocorrelation.
     data : np.array()
         if time_trace == False: last chunk of raw data
         if time_trace == True: full time trace binned: [Nx25] array.
 
     """
     
+    if fname.endswith(".czi"):
+        fname_h5 = fname[:-4] + '.h5'
+        if not os.path.exists(fname_h5):
+            print('converting czi file')
+            fname = czi2h5(fname)
     
-    metafile = get_metafile_from_file(fname)
-    info = get_file_info(metafile)
+    if metadata is None:
+        metafile = get_metafile_from_file(fname)
+        metadata = get_file_info(metafile)
     
-    dwellTime = 1e-6 * info.timeResolution
-    duration = info.duration
+    try:
+        dwellTime = 1e-6 * metadata.timeResolution # s
+    except:
+        dwellTime = 1e-6 * metadata.time_resolution # s
+    duration = metadata.duration
     
     N = int(np.floor(duration / split)) # number of chunks
-
+    
+    if N == 0:
+        return [None, None]
+    
     G = Correlations()
     G.dwellTime = dwellTime
-    chunkSize = int(np.floor( split/ dwellTime))
-    Gcorrs = []
-    
+    chunkSize = int(np.floor(split / dwellTime))
     for chunk in range(N):
         # --------------------- CALCULATE CORRELATIONS SINGLE CHUNK ---------------------
-        print("+-----------------------")
-        print("| Loading chunk " + str(chunk))
-        print("+-----------------------")
-        
         if root != 0:
             root.progress = chunk / N
-        
+        string2print = "| Loading chunk " + str(chunk+1) + "/" + str(N) + " |"
+        stringL = len(string2print) - 2
+        print("+" + "-"*stringL + "+")
+        print(string2print)
+        print("+" + "-"*stringL + "+")
         data = file_to_fcs_count(fname, np.uint8, chunkSize, chunk*chunkSize)
-        
         if time_trace == True:
             binSize = int(chunkSize / 1000 * N) # time trace binned to 1000 data points
             bdata = bindata_chunks(data, binSize)
             bdataL = len(bdata)
             num_ch = np.shape(bdata)[1]
+            print("chunksize = " + str(chunkSize) + " - " + str(binSize))
+            print("N = " + str(N))
             if chunk == 0:
                 timetraceAll = np.zeros((1000, num_ch), dtype=int)
             timetraceAll[chunk*bdataL:(chunk+1)*bdataL, :] = bdata 
         
-        Gsplit,Gtimes = fcs_sparse(data, dwellTime, accuracy)
-        Gcorrs.append(Gsplit)
-    G.lagtimes = Gtimes
-    G.Gsplit   = Gcorrs
+        indk = 0
+        for ind, j in enumerate(list_of_g):
+            print('     --> ' + str(j) + ": ", end = '')
+            # ------------------ CHUNK ------------------
+            newList = [j]
+            Gsplit = fcs2corr(data, 1e6*dwellTime, newList, accuracy, averaging=averaging, list_of_g_out=list_of_g_out, algorithm=algorithm)
+            GsplitList = list(Gsplit.__dict__.keys())
+            for k in GsplitList:
+                if k.find('dwellTime') == -1:
+                    attrname = k
+                    if list_of_g_out is not None:
+                        attrname = list_of_g_out[indk]
+                        indk += 1
+                    if not np.isnan(getattr(Gsplit, k)).any():
+                        setattr(G, attrname + '_chunk' + str(chunk), getattr(Gsplit, k))
     
-    if time_trace:
+    # ---------- CALCULATE AVERAGE CORRELATION OF ALL CHUNKS ----------
+    print("Calculating average correlations")
+    # Get list of "root" names, i.e. without "_chunk"
+    Gfields = list(G.__dict__.keys())
+    t = [Gfields[i].split("_chunk")[0] for i in range(len(Gfields))]
+    t = list(dict.fromkeys(t))
+    t.remove("dwellTime")
+    print(t)
+    # average over chunks
+    for field in t:
+        avList = [i for i in Gfields if i.startswith(field + '_chunk')]
+        # check if all elements have same dimension
+        Ntau = [len(getattr(G, i)) for i in avList]
+        avList2 = [avList[i] for i in range(len(avList)) if Ntau[i] == Ntau[0]]
+        
+        Gtemp = getattr(G, avList2[0]) * 0
+        GtempSquared = getattr(G, avList2[0])**2 * 0
+        for chunk in avList2:
+            Gtemp += getattr(G, chunk)
+            GtempSquared += getattr(G, chunk)**2
+        
+        Gtemp /= len(avList2)
+        Gstd = np.sqrt(np.clip(GtempSquared / len(avList2) - Gtemp**2, 0, None))
+        
+        Gtot = np.zeros((np.shape(Gtemp)[0], np.shape(Gtemp)[1] + 1))
+        Gtot[:, 0:-1] = Gtemp # [time, average]
+        Gtot[:, -1] = Gstd[:,1] # standard deviation
+        
+        setattr(G, str(field) + '_average', Gtot)   
+    
+    # average over same shifts in case of 'crossAll'
+    # if 'crossAll' in list_of_g:
+    #     print("Calculating spatially averaged correlations.")
+    #     spatialCorr = np.zeros([9, 9, len(G.det0x0_average)])
+    #     for shifty in np.arange(-4, 5):
+    #         for shiftx in np.arange(-4, 5):
+    #             avList = spad_shift_vector_crosscorr([shifty, shiftx])
+    #             avList = [s + '_average' for s in avList]
+    #             Gav = sum(getattr(G, i) for i in avList) / len(avList)
+    #             spatialCorr[shifty+4, shiftx+4, :] = Gav[:,1]
+    #     G.spatialCorr = spatialCorr
+
+    if time_trace == True:
         data = timetraceAll
-    
-    if return_obj:
-        # convert 4D numpy array (chunk, y, corr1, corr2) to corr object
-        Garr = np.asarray(G.Gsplit)
-        Gshape = np.shape(Garr)
-        Nchunk = Gshape[0]
-        Ntau = Gshape[1]
-        Nx = Gshape[2]
-        Ny = Gshape[3]
-        Gout = Correlations()
-        if averaging is None:
-            for c in range(Nchunk):
-                for x in range(Nx):
-                    for y in range(Ny):
-                        Gtemp = np.zeros((Ntau, 2))
-                        Gtemp[:,0] = np.squeeze(G.lagtimes)
-                        Gtemp[:,1] = Garr[c, :, x, y]
-                        setattr(Gout, "det" + str(x) + "x" + str(y) + "_chunk" + str(c), Gtemp)
-        else:
-            # average over multiple cross-correlations
-            avs = [i[1] for i in averaging] # which correlations to average
-            els = [i[0] for i in averaging] # their new names
-            for c in range(Nchunk):
-                for el, av in enumerate(avs):
-                    singleAv = [int(i) for i in re.findall(r'\d+', av)]
-                    Nav = int(len(singleAv) / 2)
-                    Gtemp = np.zeros((len(G.lagtimes), 2))
-                    for i in range(Nav):
-                        Gtemp[:,0] += np.squeeze(G.lagtimes)
-                        Gtemp[:,1] += Garr[c, :, singleAv[2*i], singleAv[2*i+1]]
-                    Gtemp /= Nav
-                    setattr(Gout, els[el] + "_chunk" + str(c), Gtemp)
-                
-        Gout = fcs_av_chunks(Gout, list(range(Nchunk)))
-        Gout.dwellTime = dwellTime
-        G = Gout
-    
+
     return G, data
 
-def fcs_sparse(data, dwell_time, m=50, normalize = True):
-    # object from correlations class in which all correlation data is stored
-    G = Correlations()
-    
-    # dwell time
-    G.dwellTime = dwell_time
-    
-    # Check parameters
-    if m // 2 != m / 2:
-        mold = m
-        m = np.int_((m // 2 + 1) * 2)
-    else:
-        m = np.int_(m)
 
-    N = N0 = data.shape[0]
-    Nchan = data.shape[1]
-    k = np.int_(np.floor(np.log2(N / m)))
-    lenG = m + k * m // 2 + 1
-    Gtimes = np.zeros((lenG, 1), dtype = "float32")
-    G = np.zeros((lenG, Nchan, Nchan), dtype="float32")
-    normstat = np.zeros(lenG, dtype="float32")
-    normnump = np.zeros(lenG, dtype="float32")
-    
-    spdata = spy.sparse.csr_matrix(data.transpose())
-    spdata = spdata.astype("float32")
-    
-    traceavg = spdata.mean(axis = 1)
-    traceavg[traceavg==0]=1
-    
-    # Calculate autocorrelation function for first m+1 bins
-    for n in range(0, m + 1):
-        Gtimes[n] = dwell_time * n
-        res = spdata[:,:N-n].dot(spdata[:,n:].transpose())
-        G[n] = res.toarray()
-        normstat[n] = N - n
-        normnump[n] = N
-    
-    if N % 2 == 1:
-        N -= 1
-    # compress every second element
-    spdata = (spdata[:,:N:2] + spdata[:,1:N:2]) / 2
-    spdata = spdata.toarray() # spdata is now full
-    
-    spdata = spdata-traceavg
-    
-    N //= 2
-    
-    # Start iteration for each m/2 values
-    for step in range(1, k + 1):
-        # Get the next m/2 values via correlation of the trace
-        for n in range(1, m // 2 + 1):
-            npmd2 = n + m // 2
-            idx = m + n + (step - 1) * m // 2
-            if spdata[:,:N - npmd2].shape[1] == 0:
-                # This is a shortcut that stops the iteration once the
-                # length of the trace is too small to compute a corre-
-                # lation. The actual length of the correlation function
-                # does not only depend on k - We also must be able to
-                # perform the sum with respect to k for all elements.
-                # For small N, the sum over zero elements would be
-                # computed here.
-                #
-                # One could make this for-loop go up to maxval, where
-                #   maxval1 = int(m/2)
-                #   maxval2 = int(N-m/2-1)
-                #   maxval = min(maxval1, maxval2)
-                # However, we then would also need to find out which
-                # element in G is the last element...
-                G = G[:idx - 1]
-                normstat = normstat[:idx - 1]
-                normnump = normnump[:idx - 1]
-                # Note that this break only breaks out of the current
-                # for loop. However, we are already in the last loop
-                # of the step-for-loop. That is because we calculated
-                # k in advance.
-                break
-            else:
-                Gtimes[idx] = dwell_time * npmd2 * 2**step
-                # This is the computationally intensive step
-                G[idx] = spdata[:,:N-npmd2].dot(spdata[:,npmd2:].transpose())
-                normstat[idx] = N - npmd2
-                normnump[idx] = N
-        # Check if len(trace) is even:
-        if N % 2 == 1:
-            N -= 1
-        # compress every second element
-        spdata = (spdata[:,:N:2] + spdata[:,1:N:2]) / 2  
-        N //= 2
-   
-    if normalize:
-        # G /= normstat.reshape(lenG,1,1)
-        # G /= (traceavg*traceavg.transpose())
-        # G -= 1
-        lenG = len(G)
-        G /= normstat.reshape(lenG,1,1)
-        G /= (traceavg*traceavg.transpose())
-        G[1:m+1] -= 1
-
-    return G, Gtimes
-    
-
-def correlate_parallel(a, m=16, deltat=1, normalize=False, copy=True, dtype=None,
-                  compress="average", ret_sum=False):
-   
-    if not isinstance(normalize, bool):
-        raise ValueError("`normalize` must be boolean!")
-    if not isinstance(copy, bool):
-        raise ValueError("`copy` must be boolean!")
-    if not isinstance(ret_sum, bool):
-        raise ValueError("`ret_sum` must be boolean!")
-    if normalize and ret_sum:
-        raise ValueError("'normalize' and 'ret_sum' must not both be True!")
-    compress_values = ["average", "first", "second"]
-    if compress not in compress_values:
-        raise ValueError("Invalid value for `compress`! Possible values "
-                         "are '{}'.".format(','.join(compress_values)))
-
-    if dtype is None:
-        dtype = np.dtype(a[0].__class__)
-    else:
-        dtype = np.dtype(dtype)
-
-    ZERO_CUTOFF = 1e-15
-
-    # If copy is false and dtype is the same as the input array,
-    # then this line does not have an effect:
-    trace = np.array(a, dtype=dtype, copy=copy)
-    trace = trace.transpose()
-
-    # Check parameters
-    if m // 2 != m / 2:
-        mold = m
-        m = np.int_((m // 2 + 1) * 2)
-    else:
-        m = np.int_(m)
-
-    N = N0 = trace.shape[0]
-
-    # Find out the length of the correlation function.
-    # The integer k defines how many times we can average over
-    # two neighboring array elements in order to obtain an array of
-    # length just larger than m.
-    k = np.int_(np.floor(np.log2(N / m)))
-
-    # In the base2 multiple-tau scheme, the length of the correlation
-    # array is (only taking into account values that are computed from
-    # traces that are just larger than m):
-    lenG = m + k * (m // 2) + 1
-
-    G = np.zeros((lenG, 2), dtype=dtype)
-
-    normstat = np.zeros(lenG, dtype=dtype)
-    normnump = np.zeros(lenG, dtype=dtype)
-
-    traceavg = np.average(trace, axis = 1)
-
-    # We use the fluctuation of the signal around the mean
-    if normalize:
-        trace -= traceavg.reshape(len(traceavg),1)
-
-    # Otherwise the following for-loop will fail:
-    if N < 2 * m:
-        raise ValueError("`len(a)` must be >= `2m`!")
-
-    # Calculate autocorrelation function for first m+1 bins
-    # Discrete convolution of m elements
-    for n in range(0, m + 1):
-        G[n, 0] = deltat * n
-        # This is the computationally intensive step
-        G[n, 1] = np.sum(trace[:N - n] * trace[n:])
-        normstat[n] = N - n
-        normnump[n] = N
-    # Now that we calculated the first m elements of G, let us
-    # go on with the next m/2 elements.
-    # Check if len(trace) is even:
-    if N % 2 == 1:
-        N -= 1
-    # compress every second element
-    if compress == compress_values[0]:
-        trace = (trace[:N:2] + trace[1:N:2]) / 2
-    elif compress == compress_values[1]:
-        trace = trace[:N:2]
-    elif compress == compress_values[2]:
-        trace = trace[1:N:2]
-    N //= 2
-    # Start iteration for each m/2 values
-    for step in range(1, k + 1):
-        # Get the next m/2 values via correlation of the trace
-        for n in range(1, m // 2 + 1):
-            npmd2 = n + m // 2
-            idx = m + n + (step - 1) * m // 2
-            if len(trace[:N - npmd2]) == 0:
-                # This is a shortcut that stops the iteration once the
-                # length of the trace is too small to compute a corre-
-                # lation. The actual length of the correlation function
-                # does not only depend on k - We also must be able to
-                # perform the sum with respect to k for all elements.
-                # For small N, the sum over zero elements would be
-                # computed here.
-                #
-                # One could make this for-loop go up to maxval, where
-                #   maxval1 = int(m/2)
-                #   maxval2 = int(N-m/2-1)
-                #   maxval = min(maxval1, maxval2)
-                # However, we then would also need to find out which
-                # element in G is the last element...
-                G = G[:idx - 1]
-                normstat = normstat[:idx - 1]
-                normnump = normnump[:idx - 1]
-                # Note that this break only breaks out of the current
-                # for loop. However, we are already in the last loop
-                # of the step-for-loop. That is because we calculated
-                # k in advance.
-                break
-            else:
-                G[idx, 0] = deltat * npmd2 * 2**step
-                # This is the computationally intensive step
-                G[idx, 1] = np.sum(trace[:N - npmd2] *
-                                   trace[npmd2:])
-                normstat[idx] = N - npmd2
-                normnump[idx] = N
-        # Check if len(trace) is even:
-        if N % 2 == 1:
-            N -= 1
-        # compress every second element
-        if compress == compress_values[0]:
-            trace = (trace[:N:2] + trace[1:N:2]) / 2
-        elif compress == compress_values[1]:
-            trace = trace[:N:2]
-        elif compress == compress_values[2]:
-            trace = trace[1:N:2]
-
-        N //= 2
-
-    if normalize:
-        G[:, 1] /= traceavg**2 * normstat
-    elif not ret_sum:
-        G[:, 1] *= N0 / normnump
-
-    if ret_sum:
-        return G, normstat
-    else:
-        return G
-
-    
-def fcs2corr(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard', 'ullr'], accuracy=50, algorithm='multipletau'):
+def fcs2corr(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard', 'ullr'], accuracy=50, algorithm='multipletau', averaging=None, list_of_g_out=None):
     """
     Convert SPAD-fcs data to correlation curves
     Function used for most of the correlations calculations.
@@ -428,6 +215,7 @@ def fcs2corr(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard
         setattr(G, 'det0', correlate(data, data, m=accuracy, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
         return G
 
+    num_ch = np.shape(data)[1]
     for i in list_of_g:
         if isinstance(i, int):
             # autocorrelation of a detector element i
@@ -598,13 +386,43 @@ def fcs2corr(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard
                 
         elif i == "crossAll":
             # crosscorrelation every element with every other element
-            for j in range(25):
-                data1 = extract_spad_data(data, j)
-                for k in range(25):
-                    data2 = extract_spad_data(data, k)
-                    print('Calculating crosscorrelation det' + str(j) + ' and det' + str(k))
-                    Gtemp = correlate(data1, data2, m=accuracy, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
-                    setattr(G, 'det' + str(j) + 'x' + str(k), Gtemp)
+            if algorithm == "sparse_matrices":
+                print("Calculating all crosscorrelations with sparse matrices algorithm")
+                [Gall, Gtimes] = fcs_sparse(data, dwell_time*1e-6, m=accuracy)
+                Gtemp = np.zeros((len(Gtimes), 2))
+                Gtemp[:,0] = np.squeeze(Gtimes)
+                if averaging is None:
+                    for j in range(num_ch):
+                        for k in range(num_ch):
+                            Gtemp[:,1] = Gall[:,j,k]
+                            setattr(G, 'det' + str(j) + 'x' + str(k), Gtemp)
+                else:
+                    # average over multiple cross-correlations
+                    if averaging == 'default':
+                        averaging = corrs2average_for_stics()
+                        avs = [i[1] for i in averaging] # which correlations to average
+                        els = [i[0] for i in averaging] # their new names
+                    else:
+                        avs = averaging
+                        els = list_of_g_out
+                    for el, av in enumerate(avs):
+                        singleAv = [int(ch_nr) for ch_nr in re.findall(r'\d+', av)]
+                        Nav = int(len(singleAv) / 2)
+                        Gtemp = np.zeros((len(Gtimes), 2))
+                        Gtemp[:,0] = np.squeeze(Gtimes)
+                        for ind_av in range(Nav):
+                            Gtemp[:,1] += Gall[:, singleAv[2*ind_av], singleAv[2*ind_av+1]]
+                        Gtemp[:,1] /= Nav
+                        setattr(G, els[el], Gtemp)
+                        
+            else:
+                for j in range(num_ch):
+                    data1 = extract_spad_data(data, j)
+                    for k in range(num_ch):
+                        data2 = extract_spad_data(data, k)
+                        print('Calculating crosscorrelation det' + str(j) + ' and det' + str(k))
+                        Gtemp = correlate(data1, data2, m=accuracy, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
+                        setattr(G, 'det' + str(j) + 'x' + str(k), Gtemp)
         
         elif i == "autoSpatial":
             # number of time points
@@ -669,6 +487,49 @@ def fcs2corr(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard
 
     return G
 
+
+def correlate(data1, data2, m=50, deltat=1, normalize=True, algorithm='multipletau'):
+    """
+    Calculate cross-correlation between two 1D arrays
+
+    Parameters
+    ----------
+    data1 : np.array()
+        First array with photon counts vs. time.
+    data2 : np.array()
+        Second array with photon counts vs. time.
+    m : int, optional
+        Accuracy for the correlation function. The default is 50.
+    deltat : int, optional
+        Time between consecutive data points (dwell time). The default is 1.
+    normalize : boolean, optional
+        Normalize the correlation function, only needed for multipletau.
+        The default is True.
+    algorithm : string, optional
+        Algorithm used to calculate the correlation. The default is 'multipletau'.
+        Other options are 'wiener-khinchin' (fourier based) and 'tt2corr' for
+        TCSPC data. In the last case, the input are arrays with arrival times
+
+    Returns
+    -------
+    G : np.array()
+        Correlation curve.
+
+    """
+    if algorithm == 'multipletau':
+        G = multipletau.correlate(data1, data2, m=m, deltat=deltat, normalize=normalize)
+    elif algorithm == 'wiener-khinchin':
+        # time trace to correlation using fft
+        G = tt2corr(data1, data2, m=m, macro_time=deltat)
+    else:
+        # algorithm is time-tag-to-correlation
+        ind1 = np.where((data1 != 0))[0]
+        ind2 = np.where((data2 != 0))[0]
+        weights1 = data1[ind1]
+        weights2 = data2[ind2]
+        G = atimes_2_corr(ind1, ind2, accuracy=m, w0=weights1, w1=weights2, macroTime=deltat, taumax=ind1[-1] / 100)
+    return G
+        
 
 def fcs2corrsplit(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard', 'ullr'], accuracy=50, split=10):
     """
@@ -752,162 +613,224 @@ def fcs2corrsplit(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chess
     return G
 
 
-def fcs_load_and_corr_split(fname, list_of_g=['central', 'sum3', 'sum5', 'chessboard', 'ullr'], accuracy=16, split=10, time_trace=False, metadata=None, root=0, list_of_g_out=None, algorithm='multipletau'):
+def fcs_sparse_matrices(fname, accuracy=16, split=10, time_trace=False, return_obj=False, averaging=None, root=0):
     """
-    Load data from a file in chunks and calculate correlations.
+    Calculate correlations using spare matrices properties.
+    Author: Eleonora Perego
 
     Parameters
     ----------
     fname : string
-        File name.
-    list_of_g : list, optional
-        List of correlations to be calculated.
-        The default is ['central', 'sum3', 'sum5', 'chessboard', 'ullr'].
+        file name with fcs data.
     accuracy : int, optional
         Accuracy of the autocorrelation function. The default is 16.
     split : float, optional
-        Number of traces to split the data into
-        E.g. split=10 will divide a 60 second stream in 10 six second
-        traces and calculate G for each individual trace. The default is 10.
+        Number of seconds of each chunk to split the data into
+        E.g. split=10 will divide a 60 second stream in 6 ten-second
+        traces and calculate G for each  ividual trace. The default is 10.
     time_trace : boolean, optional
         see output. The default is False.
-    metadata : None or object, optional
-        if None: metadata is extracted from .txt info file
-        if metadata Object: meta is given as input parameter. The default is None.
+    return_obj : boolean, optional
+        Return data as 4D np.array() or object. The default is False.
     root : int, optional
-        used for GUI only to pass progress. The default is 0.
-    list_of_g_out : TYPE, optional
-        used for GUI only. The default is None.
+        Used for GUI only. The default is 0.
+    averaging : list of list of two strings
+        Used for averaging multiple cross-correlations (for each chunk)
+        E.g. for having G.up_chunk0 = mean(det12x7_chunk0 and det11x6_chunk0)
+            and G.down_chunk0 = mean(det12x17_chunk0 and det11x16_chunk0)
+            etc.
+        Use: averaging = [['up', '12x7+11x6'], ['down', '12x17+11x16']]
 
     Returns
     -------
     G : object
-        Object with all autocorrelations
-        E.g. G.central contains the array with the central detector
-        element autocorrelation.
+        np.array or object with autocorrelations.
     data : np.array()
         if time_trace == False: last chunk of raw data
         if time_trace == True: full time trace binned: [Nx25] array.
 
     """
     
-    if metadata is None:
-        metafile = get_metafile_from_file(fname)
-        metadata = get_file_info(metafile)
     
-    try:
-        dwellTime = 1e-6 * metadata.timeResolution # s
-    except:
-        dwellTime = 1e-6 * metadata.time_resolution # s
-    duration = metadata.duration
+    metafile = get_metafile_from_file(fname)
+    info = get_file_info(metafile)
+    
+    dwellTime = 1e-6 * info.timeResolution
+    duration = info.duration
     
     N = int(np.floor(duration / split)) # number of chunks
-    
-    if N == 0:
-        return [None, None]
-    
+
     G = Correlations()
     G.dwellTime = dwellTime
-    chunkSize = int(np.floor(split / dwellTime))
+    chunkSize = int(np.floor( split/ dwellTime))
+    Gcorrs = []
+    
     for chunk in range(N):
         # --------------------- CALCULATE CORRELATIONS SINGLE CHUNK ---------------------
+        print("+-----------------------")
+        print("| Loading chunk " + str(chunk))
+        print("+-----------------------")
+        
         if root != 0:
             root.progress = chunk / N
-        string2print = "| Loading chunk " + str(chunk+1) + "/" + str(N) + " |"
-        stringL = len(string2print) - 2
-        print("+" + "-"*stringL + "+")
-        print(string2print)
-        print("+" + "-"*stringL + "+")
+        
         data = file_to_fcs_count(fname, np.uint8, chunkSize, chunk*chunkSize)
+        
         if time_trace == True:
             binSize = int(chunkSize / 1000 * N) # time trace binned to 1000 data points
             bdata = bindata_chunks(data, binSize)
             bdataL = len(bdata)
             num_ch = np.shape(bdata)[1]
-            print("chunksize = " + str(chunkSize) + " - " + str(binSize))
-            print("N = " + str(N))
             if chunk == 0:
                 timetraceAll = np.zeros((1000, num_ch), dtype=int)
             timetraceAll[chunk*bdataL:(chunk+1)*bdataL, :] = bdata 
         
-        indk = 0
-        for ind, j in enumerate(list_of_g):
-            print('     --> ' + str(j) + ": ", end = '')
-            # ------------------ CHUNK ------------------
-            newList = [j]
-            Gsplit = fcs2corr(data, 1e6*dwellTime, newList, accuracy, algorithm=algorithm)
-            GsplitList = list(Gsplit.__dict__.keys())
-            for k in GsplitList:
-                if k.find('dwellTime') == -1:
-                    attrname = k
-                    if list_of_g_out is not None:
-                        attrname = list_of_g_out[indk]
-                        indk += 1
-                    if not np.isnan(getattr(Gsplit, k)).any():
-                        setattr(G, attrname + '_chunk' + str(chunk), getattr(Gsplit, k))
+        Gsplit,Gtimes = fcs_sparse(data, dwellTime, accuracy)
+        Gcorrs.append(Gsplit)
+    G.lagtimes = Gtimes
+    G.Gsplit   = Gcorrs
     
-    # ---------- CALCULATE AVERAGE CORRELATION OF ALL CHUNKS ----------
-    print("Calculating average correlations")
-    # Get list of "root" names, i.e. without "_chunk"
-    Gfields = list(G.__dict__.keys())
-    t = [Gfields[i].split("_chunk")[0] for i in range(len(Gfields))]
-    t = list(dict.fromkeys(t))
-    t.remove("dwellTime")
-    # average over chunks
-    for field in t:
-        avList = [i for i in Gfields if i.startswith(field + '_chunk')]
-        # check if all elements have same dimension
-        Ntau = [len(getattr(G, i)) for i in avList]
-        avList2 = [avList[i] for i in range(len(avList)) if Ntau[i] == Ntau[0]]
-        
-        Gtemp = getattr(G, avList2[0]) * 0
-        GtempSquared = getattr(G, avList2[0])**2 * 0
-        for chunk in avList2:
-            Gtemp += getattr(G, chunk)
-            GtempSquared += getattr(G, chunk)**2
-        
-        Gtemp /= len(avList2)
-        Gstd = np.sqrt(np.clip(GtempSquared / len(avList2) - Gtemp**2, 0, None))
-        
-        Gtot = np.zeros((np.shape(Gtemp)[0], np.shape(Gtemp)[1] + 1))
-        Gtot[:, 0:-1] = Gtemp # [time, average]
-        Gtot[:, -1] = Gstd[:,1] # standard deviation
-        
-        setattr(G, str(field) + '_average', Gtot)   
-    
-    # average over same shifts in case of 'crossAll'
-    if 'crossAll' in list_of_g:
-        print("Calculating spatially averaged correlations.")
-        spatialCorr = np.zeros([9, 9, len(G.det0x0_average)])
-        for shifty in np.arange(-4, 5):
-            for shiftx in np.arange(-4, 5):
-                avList = spad_shift_vector_crosscorr([shifty, shiftx])
-                avList = [s + '_average' for s in avList]
-                Gav = sum(getattr(G, i) for i in avList) / len(avList)
-                spatialCorr[shifty+4, shiftx+4, :] = Gav[:,1]
-        G.spatialCorr = spatialCorr
-
-    if time_trace == True:
+    if time_trace:
         data = timetraceAll
-
+    
+    if return_obj:
+        # convert 4D numpy array (chunk, y, corr1, corr2) to corr object
+        Garr = np.asarray(G.Gsplit)
+        Gshape = np.shape(Garr)
+        Nchunk = Gshape[0]
+        Ntau = Gshape[1]
+        Nx = Gshape[2]
+        Ny = Gshape[3]
+        Gout = Correlations()
+        if averaging is None:
+            for c in range(Nchunk):
+                for x in range(Nx):
+                    for y in range(Ny):
+                        Gtemp = np.zeros((Ntau, 2))
+                        Gtemp[:,0] = np.squeeze(G.lagtimes)
+                        Gtemp[:,1] = Garr[c, :, x, y]
+                        setattr(Gout, "det" + str(x) + "x" + str(y) + "_chunk" + str(c), Gtemp)
+        else:
+            # average over multiple cross-correlations
+            avs = [i[1] for i in averaging] # which correlations to average
+            els = [i[0] for i in averaging] # their new names
+            for c in range(Nchunk):
+                for el, av in enumerate(avs):
+                    singleAv = [int(i) for i in re.findall(r'\d+', av)]
+                    Nav = int(len(singleAv) / 2)
+                    Gtemp = np.zeros((len(G.lagtimes), 2))
+                    for i in range(Nav):
+                        Gtemp[:,0] += np.squeeze(G.lagtimes)
+                        Gtemp[:,1] += Garr[c, :, singleAv[2*i], singleAv[2*i+1]]
+                    Gtemp /= Nav
+                    setattr(Gout, els[el] + "_chunk" + str(c), Gtemp)
+                
+        Gout = fcs_av_chunks(Gout, list(range(Nchunk)))
+        Gout.dwellTime = dwellTime
+        G = Gout
+    
     return G, data
 
 
-def correlate(data1, data2, m=50, deltat=1, normalize=True, algorithm='multipletau'):
-    if algorithm == 'multipletau':
-        G = multipletau.correlate(data1, data2, m=m, deltat=deltat, normalize=normalize)
-    elif algorithm == 'wiener-khinchin':
-        # time trace to correlation using fft
-        G = tt2corr(data1, data2, m=m, macro_time=deltat)
+def fcs_sparse(data, dwell_time, m=50, normalize = True):
+    # object from correlations class in which all correlation data is stored
+    G = Correlations()
+    
+    # dwell time
+    G.dwellTime = dwell_time
+    
+    # Check parameters
+    if m // 2 != m / 2:
+        mold = m
+        m = np.int_((m // 2 + 1) * 2)
     else:
-        # algorithm is time-tag-to-correlation
-        ind1 = np.where((data1 != 0))[0]
-        ind2 = np.where((data2 != 0))[0]
-        weights1 = data1[ind1]
-        weights2 = data2[ind2]
-        G = atimes_2_corr(ind1, ind2, accuracy=m, w0=weights1, w1=weights2, macroTime=deltat, taumax=ind1[-1] / 100)
-    return G
-        
+        m = np.int_(m)
+
+    N = N0 = data.shape[0]
+    Nchan = data.shape[1]
+    k = np.int_(np.floor(np.log2(N / m)))
+    lenG = m + k * m // 2 + 1
+    Gtimes = np.zeros((lenG, 1), dtype = "float32")
+    G = np.zeros((lenG, Nchan, Nchan), dtype="float32")
+    normstat = np.zeros(lenG, dtype="float32")
+    normnump = np.zeros(lenG, dtype="float32")
+    
+    spdata = spy.sparse.csr_matrix(data.transpose())
+    spdata = spdata.astype("float32")
+    
+    traceavg = spdata.mean(axis = 1)
+    traceavg[traceavg==0]=1
+    
+    # Calculate autocorrelation function for first m+1 bins
+    for n in range(0, m + 1):
+        Gtimes[n] = dwell_time * n
+        res = spdata[:,:N-n].dot(spdata[:,n:].transpose())
+        G[n] = res.toarray()
+        normstat[n] = N - n
+        normnump[n] = N
+    
+    if N % 2 == 1:
+        N -= 1
+    # compress every second element
+    spdata = (spdata[:,:N:2] + spdata[:,1:N:2]) / 2
+    spdata = spdata.toarray() # spdata is now full
+    
+    spdata = spdata-traceavg
+    
+    N //= 2
+    
+    # Start iteration for each m/2 values
+    for step in range(1, k + 1):
+        # Get the next m/2 values via correlation of the trace
+        for n in range(1, m // 2 + 1):
+            npmd2 = n + m // 2
+            idx = m + n + (step - 1) * m // 2
+            if spdata[:,:N - npmd2].shape[1] == 0:
+                # This is a shortcut that stops the iteration once the
+                # length of the trace is too small to compute a corre-
+                # lation. The actual length of the correlation function
+                # does not only depend on k - We also must be able to
+                # perform the sum with respect to k for all elements.
+                # For small N, the sum over zero elements would be
+                # computed here.
+                #
+                # One could make this for-loop go up to maxval, where
+                #   maxval1 = int(m/2)
+                #   maxval2 = int(N-m/2-1)
+                #   maxval = min(maxval1, maxval2)
+                # However, we then would also need to find out which
+                # element in G is the last element...
+                G = G[:idx - 1]
+                normstat = normstat[:idx - 1]
+                normnump = normnump[:idx - 1]
+                # Note that this break only breaks out of the current
+                # for loop. However, we are already in the last loop
+                # of the step-for-loop. That is because we calculated
+                # k in advance.
+                break
+            else:
+                Gtimes[idx] = dwell_time * npmd2 * 2**step
+                # This is the computationally intensive step
+                G[idx] = spdata[:,:N-npmd2].dot(spdata[:,npmd2:].transpose())
+                normstat[idx] = N - npmd2
+                normnump[idx] = N
+        # Check if len(trace) is even:
+        if N % 2 == 1:
+            N -= 1
+        # compress every second element
+        spdata = (spdata[:,:N:2] + spdata[:,1:N:2]) / 2  
+        N //= 2
+   
+    if normalize:
+        # G /= normstat.reshape(lenG,1,1)
+        # G /= (traceavg*traceavg.transpose())
+        # G -= 1
+        lenG = len(G)
+        G /= normstat.reshape(lenG,1,1)
+        G /= (traceavg*traceavg.transpose())
+        G[1:m+1] -= 1
+
+    return G, Gtimes
 
 
 def fcs_spatialcorrav(G, N=5, returnType='3Darray'):
@@ -924,6 +847,150 @@ def fcs_spatialcorrav(G, N=5, returnType='3Darray'):
     if returnType == '3Darray':
         G.spatialCorr = spatialCorr
     return G
+
+
+def correlate_parallel(a, m=16, deltat=1, normalize=False, copy=True, dtype=None,
+                  compress="average", ret_sum=False):
+   
+    if not isinstance(normalize, bool):
+        raise ValueError("`normalize` must be boolean!")
+    if not isinstance(copy, bool):
+        raise ValueError("`copy` must be boolean!")
+    if not isinstance(ret_sum, bool):
+        raise ValueError("`ret_sum` must be boolean!")
+    if normalize and ret_sum:
+        raise ValueError("'normalize' and 'ret_sum' must not both be True!")
+    compress_values = ["average", "first", "second"]
+    if compress not in compress_values:
+        raise ValueError("Invalid value for `compress`! Possible values "
+                         "are '{}'.".format(','.join(compress_values)))
+
+    if dtype is None:
+        dtype = np.dtype(a[0].__class__)
+    else:
+        dtype = np.dtype(dtype)
+
+    ZERO_CUTOFF = 1e-15
+
+    # If copy is false and dtype is the same as the input array,
+    # then this line does not have an effect:
+    trace = np.array(a, dtype=dtype, copy=copy)
+    trace = trace.transpose()
+
+    # Check parameters
+    if m // 2 != m / 2:
+        mold = m
+        m = np.int_((m // 2 + 1) * 2)
+    else:
+        m = np.int_(m)
+
+    N = N0 = trace.shape[0]
+
+    # Find out the length of the correlation function.
+    # The integer k defines how many times we can average over
+    # two neighboring array elements in order to obtain an array of
+    # length just larger than m.
+    k = np.int_(np.floor(np.log2(N / m)))
+
+    # In the base2 multiple-tau scheme, the length of the correlation
+    # array is (only taking into account values that are computed from
+    # traces that are just larger than m):
+    lenG = m + k * (m // 2) + 1
+
+    G = np.zeros((lenG, 2), dtype=dtype)
+
+    normstat = np.zeros(lenG, dtype=dtype)
+    normnump = np.zeros(lenG, dtype=dtype)
+
+    traceavg = np.average(trace, axis = 1)
+
+    # We use the fluctuation of the signal around the mean
+    if normalize:
+        trace -= traceavg.reshape(len(traceavg),1)
+
+    # Otherwise the following for-loop will fail:
+    if N < 2 * m:
+        raise ValueError("`len(a)` must be >= `2m`!")
+
+    # Calculate autocorrelation function for first m+1 bins
+    # Discrete convolution of m elements
+    for n in range(0, m + 1):
+        G[n, 0] = deltat * n
+        # This is the computationally intensive step
+        G[n, 1] = np.sum(trace[:N - n] * trace[n:])
+        normstat[n] = N - n
+        normnump[n] = N
+    # Now that we calculated the first m elements of G, let us
+    # go on with the next m/2 elements.
+    # Check if len(trace) is even:
+    if N % 2 == 1:
+        N -= 1
+    # compress every second element
+    if compress == compress_values[0]:
+        trace = (trace[:N:2] + trace[1:N:2]) / 2
+    elif compress == compress_values[1]:
+        trace = trace[:N:2]
+    elif compress == compress_values[2]:
+        trace = trace[1:N:2]
+    N //= 2
+    # Start iteration for each m/2 values
+    for step in range(1, k + 1):
+        # Get the next m/2 values via correlation of the trace
+        for n in range(1, m // 2 + 1):
+            npmd2 = n + m // 2
+            idx = m + n + (step - 1) * m // 2
+            if len(trace[:N - npmd2]) == 0:
+                # This is a shortcut that stops the iteration once the
+                # length of the trace is too small to compute a corre-
+                # lation. The actual length of the correlation function
+                # does not only depend on k - We also must be able to
+                # perform the sum with respect to k for all elements.
+                # For small N, the sum over zero elements would be
+                # computed here.
+                #
+                # One could make this for-loop go up to maxval, where
+                #   maxval1 = int(m/2)
+                #   maxval2 = int(N-m/2-1)
+                #   maxval = min(maxval1, maxval2)
+                # However, we then would also need to find out which
+                # element in G is the last element...
+                G = G[:idx - 1]
+                normstat = normstat[:idx - 1]
+                normnump = normnump[:idx - 1]
+                # Note that this break only breaks out of the current
+                # for loop. However, we are already in the last loop
+                # of the step-for-loop. That is because we calculated
+                # k in advance.
+                break
+            else:
+                G[idx, 0] = deltat * npmd2 * 2**step
+                # This is the computationally intensive step
+                G[idx, 1] = np.sum(trace[:N - npmd2] *
+                                   trace[npmd2:])
+                normstat[idx] = N - npmd2
+                normnump[idx] = N
+        # Check if len(trace) is even:
+        if N % 2 == 1:
+            N -= 1
+        # compress every second element
+        if compress == compress_values[0]:
+            trace = (trace[:N:2] + trace[1:N:2]) / 2
+        elif compress == compress_values[1]:
+            trace = trace[:N:2]
+        elif compress == compress_values[2]:
+            trace = trace[1:N:2]
+
+        N //= 2
+
+    if normalize:
+        G[:, 1] /= traceavg**2 * normstat
+    elif not ret_sum:
+        G[:, 1] *= N0 / normnump
+
+    if ret_sum:
+        return G, normstat
+    else:
+        return G
 
 
 def fcs_av_chunks(G, listOfChunks):
@@ -1060,7 +1127,7 @@ def fcs_crosscenter_av(G, returnField='_averageX', returnObj = True):
 def fcs_bin_to_csv_all(folderName=[], Glist=['central', 'sum3', 'sum5', 'chessboard', 'ullr'], split=10):
     # PARSE INPUT
     if folderName == []:
-        folderName = getcwd()
+        folderName = os.getcwd()
     folderName = folderName.replace("\\", "/")
     folderName = Path(folderName)
     
@@ -1328,3 +1395,51 @@ def plot_cross_center_scheme():
     plt.figure()
     plt.imshow(distances, 'viridis')
     plt.title('Color scheme cross-correlations')
+
+
+def corrs2average_for_stics(det_size=5, pixelsOff=[]):
+    """
+    Return a list of cross-correlations with identical shifts between their
+    channels
+
+    Parameters
+    ----------
+    det_size : int, optional
+        Number of pixels in each dimension of the array detector.
+        The default is 5.
+    pixelsOff : list, optional
+        List of pixels that are excluded for this analysis because they are
+        too far away from the optical axis, e.g [0,1,3,4,5,9,15,19,20,21,23,24]
+        The default is [].
+
+    Returns
+    -------
+    average : list
+        List of pairs of strings describing the correlations to average and their
+        new name, e.g.
+        [['up', '12x0+12x1+12x2'], ['down', '0x12+1x12+2x12']]
+    """
+    listOfX = []
+    listOfY = []
+    names = []
+    for vert in range(int(2*det_size-1)):
+        for hor in range(int(2*det_size-1)):
+            shifty = vert-det_size+1
+            shiftx = hor-det_size+1
+            listOfY.append(shifty)
+            listOfX.append(shiftx)
+            names.append('V' + str(shifty) + '_H' + str(shiftx))
+    avList = [list_of_pixel_pairs_at_distance([listOfY[i], listOfX[i]], pixelsOff=pixelsOff) for i in range(len(listOfY))]
+    avListStr = []
+    names_final = []
+    for idx, avSingleDist in enumerate(avList):
+        if len(avSingleDist) > 0:
+            avstr = ''
+            for j in avSingleDist:
+                avstr += str(j[0]) + 'x' + str(j[1]) + '+'
+            avListStr.append(avstr[0:-1])
+            names_final.append(names[idx])
+        
+    average = [[names_final[i], avListStr[i]] for i in range(len(names))]
+    
+    return average

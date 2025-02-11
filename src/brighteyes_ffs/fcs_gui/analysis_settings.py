@@ -425,6 +425,23 @@ class FFScorr:
                     Gsingle = getattr(Gall, corrtype)
         return Gsingle
     
+    def get_corr3D(self, N=9):
+        # convert set of cross-correlations to 3D array [tau, ch1, ch2]
+        try:
+            Gsingle = self.get_corr('V0_H0')
+        except:
+            return None, None
+        tau = Gsingle[:,0]
+        G3d = np.zeros((len(tau), N, N))
+        for i in range(N):
+            for j in range(N):
+                try:
+                    G = self.get_corr('V' + str(j-N//2) + '_H' + str(i-N//2))
+                    G3d[:, j, i] = G[:,1]
+                except:
+                    return None, None
+        return G3d, tau
+    
     def analysis_summary(self):
         algorithm = str(self.settings.algorithm) if self.settings.algorithm is not None else "unknown algorithm"
         return self.mode + " (settings: " + str(self.settings.resolution) + "/" + str(self.settings.chunksize) + "/" + algorithm + ")"

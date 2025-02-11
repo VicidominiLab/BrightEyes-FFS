@@ -245,7 +245,7 @@ def get_file_info_h5(fname):
     output.rangeZ = file.rangez()
     output.numberOfDataPoints = file.ndatapoints()
     output.timeResolution = file.tres()
-    output.dwellTime = file.pxdwelltime() * 1e-6 # s
+    output.dwellTime = file.tres() * 1e-6 # s
     output.duration = file.duration() # s
     output.pxsize = file.pxsize()
     

@@ -89,6 +89,36 @@ def read_ffs_file(libfile, read='active', returnObj='G'):
     return fit
 
 
+def read_fitresults_from_ffs(libfile, read='active'):
+    """
+    Read fit results from a saved ffs session
+
+    Parameters
+    ----------
+    libfile : path
+        Path to .ffs file.
+    read : str or list, optional
+        Either 'active' to read the active file.
+        Otherwise list with four elemetnsThe default is 'active'.
+
+    Returns
+    -------
+    fitresults : TYPE
+        DESCRIPTION.
+
+    """
+    fitObj = read_ffs_file(libfile, read=read, returnObj='fit')
+    num_curves = len(fitObj.fit_all_curves)
+    if num_curves < 1 or num_curves is None:
+        return None
+    fitresults = []
+    for i in range(num_curves):
+        is_fitted = fitObj.fit_all_curves[i].fitarray
+        fitresults.append((fitObj.fit_all_curves[i].startvalues[is_fitted[0:-1]]))
+    fitresults = np.asarray(fitresults)
+    return fitresults
+
+
 def read_g_from_ffs(libfile, read='active'):
     """
     Read an .ffs libfile and return the active correlation curves and fits
