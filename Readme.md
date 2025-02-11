@@ -55,11 +55,7 @@ It requires the following Python packages
 
 ### Supported file types
 
-The current version of the package can read FFS data in .h5, .tiff, and .czi files. For .h5 files generated with BrightEyes-MCS, no pre-processing is needed. For custom .h5 files, make sure to use the keyword 'data' to store the [Nt x Nc] array of FFS data, with *Nt* the number of time points and *Nc* the number of channels (detector elements). For .tiff, make sure the data contains one page with a 2D array [Nt x Nc]. For .czi files, the data is automatically converted to .h5 upon calculating the correlation.
-
-The only metadata that needs to be known is the time per data point (dwell time). For .h5 files, make sure the dwell time in microseconds can be read using
-
-	f['configurationGUI_beforeStart'].attrs['time_resolution']
+The current version of the package can read FFS data in .h5, .tiff, and .czi files. For .h5 files generated with BrightEyes-MCS, no pre-processing is needed. For custom .h5 files, make sure to use the keyword 'data' to store the [Nt x Nc] array of FFS data, with *Nt* the number of time points and *Nc* the number of channels (detector elements). The easiest way to generate correct .h5 files is with the function *brighteyes_ffs.fcs.meas_to_count.numpy2h5*, which takes a 2D numpy array as input. For .tiff, make sure the data contains one page with a 2D array [Nt x Nc]. For .czi files, the data is automatically converted to .h5 upon calculating the correlation.
 
 For .tiff files, make sure the dwell time in microseconds is stored as a tag called 'dwell_time'.
 

@@ -206,13 +206,37 @@ def czi2h5(fname):
 
     """
     out = np.squeeze(czifile.imread(fname))
+    mdata = get_file_info_czi(fname)
     while len(np.shape(out)) > 3:
         out = out[:,0]
     out = np.transpose(out.reshape((32,out.shape[1]*out.shape[2])))
     fname_h5 = fname[:-4] + ".h5"
-    with h5py.File(fname_h5, "w") as f:
+    fname_h5 = numpy2h5(fname_h5, out, mdata.timeResolution)
+    return fname_h5
+
+
+def numpy2h5(fname, data, time_resolution):
+    """
+    Convert 2D numpy array(Nt, Nc) to h5 file
+    with Nt the number of time points and Nc the number of channels
+
+    Parameters
+    ----------
+    fname : path
+        Path to .h5 file.
+    data : np.array()
+        2D array with data.
+    time_resolution : float
+        Dwell time in microseconds
+
+    Returns
+    -------
+    fname : path
+        Path to .h5 file.
+
+    """
+    with h5py.File(fname, "w") as f:
         inf = f.create_group('configurationGUI_beforeStart')
-        mdata = get_file_info_czi(fname)
         inf.attrs['nrep'] = 1
         inf.attrs['nframe'] = 1
         inf.attrs['ny'] = 1
@@ -220,10 +244,11 @@ def czi2h5(fname):
         inf.attrs['range_z'] = 0
         inf.attrs['range_y'] = 0
         inf.attrs['range_x'] = 0
-        inf.attrs['timebin_per_pixel'] = len(out)
-        inf.attrs['time_resolution'] = mdata.timeResolution
-        f.create_dataset('data',data=out, compression="gzip")
-    return fname_h5
+        inf.attrs['timebin_per_pixel'] = len(data)
+        inf.attrs['time_resolution'] = time_resolution
+        f.create_dataset('data',data=data, compression="gzip")
+    return fname
+
 
 def bin2np(fname, datatype=np.uint16, Nchunks=-1, metadata=None, sum_tbins=True, read_chunks='all'):
     # r, y, x, t, c
