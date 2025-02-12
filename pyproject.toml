@@ -26,6 +26,7 @@ dependencies = [
 	"czifile",
 	"pydantic<2.0",
 	"brighteyes_ism",
+	"notebook",
 ]
 description = "Toolbox for analysing FCS/FFS data with array detectors"
 readme = "README.md"

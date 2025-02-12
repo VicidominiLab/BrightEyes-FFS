@@ -50,6 +50,7 @@ It requires the following Python packages
 	ome_types
 	czifile
 	brighteyes_ism
+	notebook
 
 ## Getting started 
 
