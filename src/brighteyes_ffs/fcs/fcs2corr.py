@@ -1023,12 +1023,15 @@ def fcs_av_chunks(G, listOfChunks):
     listOfCorr2 = []
     
     for corr in listOfCorr:
-        if 'average' not in corr and 'chunk' in corr and 'chunksOff' not in corr:
+        if 'average' not in corr and 'chunk' in corr and 'chunksOff' not in corr and 'chunks_off' not in corr:
             pos = corr.find('chunk')
-            listOfCorr2.append(corr[0:pos])
+            if len(corr[0:pos]) > 0:
+                listOfCorr2.append(corr[0:pos])
     
     # remove duplicates
     listOfCorr2 = list(dict.fromkeys(listOfCorr2))
+    print(listOfCorr2)
+    print(listOfChunks)
     
     for corr in listOfCorr2:
         Gtemp = getattr(G, corr + 'chunk0') * 0
@@ -1038,6 +1041,7 @@ def fcs_av_chunks(G, listOfChunks):
             GtempSquared += getattr(G, corr + 'chunk' + str(chunk))**2
         
         Gtemp /= len(listOfChunks)
+        print(len(listOfChunks))
         Gstd = np.sqrt(np.clip(GtempSquared / len(listOfChunks) - Gtemp**2, 0, None))
         
         Gtot = np.zeros((np.shape(Gtemp)[0], np.shape(Gtemp)[1] + 1))
