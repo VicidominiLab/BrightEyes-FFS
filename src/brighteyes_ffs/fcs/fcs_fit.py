@@ -368,7 +368,7 @@ def fitfun_an_2c(fitparamStart, fixedparam, fit_info, tau, yexp, weights=1):
 
     """
     
-    fitparam = np.float64(np.zeros(10))
+    fitparam = np.float64(np.zeros(11))
     fitparam[fit_info==1] = fitparamStart
     fitparam[fit_info==0] = fixedparam
     
@@ -378,13 +378,14 @@ def fitfun_an_2c(fitparamStart, fixedparam, fit_info, tau, yexp, weights=1):
     alpha1 = fitparam[3]
     alpha2 = fitparam[4]
     F = fitparam[5]
-    T =fitparam[6]
-    tau_triplet = fitparam[7]
-    SF = fitparam[8]
-    offset = fitparam[9]
+    brightness = fitparam[6]
+    T =fitparam[7]
+    tau_triplet = fitparam[8]
+    SF = fitparam[9]
+    offset = fitparam[10]
     
     # calculate theoretical autocorrelation function    
-    FCStheo = fcs_analytical_2c_anomalous(tau, N, tauD1, tauD2, alpha1, alpha2, F, T, tau_triplet, SF, offset)
+    FCStheo = fcs_analytical_2c_anomalous(tau, N, tauD1, tauD2, alpha1, alpha2, F, T, tau_triplet, SF, offset, brightness)
     
     # calculate residuals
     res = yexp - FCStheo

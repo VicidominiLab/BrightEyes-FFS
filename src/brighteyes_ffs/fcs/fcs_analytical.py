@@ -113,16 +113,19 @@ def fcs_2c_analytical(tau, N, tauD1, tauD2, F, alpha=1, T=0, tautrip=1e-6, SF=5,
     return Gy
 
 
-def fcs_analytical_2c_anomalous(tau, N, tauD1, tauD2, alpha1, alpha2, F, T, tau_triplet, SF, offset):
+def fcs_analytical_2c_anomalous(tau, N, tauD1, tauD2, alpha1, alpha2, F, T, tau_triplet, SF, offset, brightness):
     # amplitude
     Gy = 1 / N
+    
+    # brightness
+    Gy /= (F + brightness * (1-F))**2
     
     # triplet fraction
     Gy *= (1 + T / (1 - T) * np.exp(-tau/tau_triplet))
     
     # two anomalous components
-    Gcomp1 = F * (1 + (tau/tauD1)**alpha1)**(-1) * (1 + (tau/tauD1)**alpha1/SF**2)**(-1)
-    Gcomp2 = (1 - F) * (1 + (tau/tauD2)**alpha2)**(-1) * (1 + (tau/tauD2)**alpha2/SF**2)**(-1)
+    Gcomp1 = F * (1 + (tau/tauD1)**alpha1)**(-1) * (1 + (tau/tauD1)**alpha1/SF**2)**(-1/2)
+    Gcomp2 = brightness**2 * (1 - F) * (1 + (tau/tauD2)**alpha2)**(-1) * (1 + (tau/tauD2)**alpha2/SF**2)**(-1/2)
     
     # total
     Gy *= (Gcomp1 + Gcomp2)

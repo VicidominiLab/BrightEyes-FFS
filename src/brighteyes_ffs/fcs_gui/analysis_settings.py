@@ -527,6 +527,7 @@ class CorrSettings():
             idx = np.nonzero(chunks_off)
             idx = list(idx[0]) # list of indices of good chunks
             try:
+                print(chunks_off)
                 G = fcs_av_chunks(G, idx)
                 try:
                     G = fcs_crosscenter_av(G, returnField='_averageX')

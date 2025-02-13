@@ -1030,8 +1030,6 @@ def fcs_av_chunks(G, listOfChunks):
     
     # remove duplicates
     listOfCorr2 = list(dict.fromkeys(listOfCorr2))
-    print(listOfCorr2)
-    print(listOfChunks)
     
     for corr in listOfCorr2:
         Gtemp = getattr(G, corr + 'chunk0') * 0
@@ -1041,7 +1039,6 @@ def fcs_av_chunks(G, listOfChunks):
             GtempSquared += getattr(G, corr + 'chunk' + str(chunk))**2
         
         Gtemp /= len(listOfChunks)
-        print(len(listOfChunks))
         Gstd = np.sqrt(np.clip(GtempSquared / len(listOfChunks) - Gtemp**2, 0, None))
         
         Gtot = np.zeros((np.shape(Gtemp)[0], np.shape(Gtemp)[1] + 1))
