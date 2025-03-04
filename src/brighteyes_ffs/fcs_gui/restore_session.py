@@ -736,7 +736,7 @@ def savelib_ffs(FFSlib, root=0, fname=''):
             if root != 0:
                 root.progressMessage = 'Almost there...'
 
-def save_ffs(window_title='Save project as', ftype='*.ffs', directory=''):
+def save_ffs(window_title='Save project as', ftype='FFS files (*.ffs)', directory=''):
     """
     Select name to save ffs lib
     ===========================================================================
@@ -750,15 +750,9 @@ def save_ffs(window_title='Save project as', ftype='*.ffs', directory=''):
     ===========================================================================
     """
     
-    dialog = QFileDialog()
-    dialog.setWindowTitle(window_title)
-    dialog.setNameFilter(ftype)
-    dialog.setDirectory(directory)
-    fname = QFileDialog.getSaveFileName()
+    fname, _ = QFileDialog.getSaveFileName(None, window_title, directory, ftype)
     
-    if fname[0] == '':
-        return None
-    return fname[0]
+    return fname if fname else None
 
 def make_zip(fname, zipfolder):
     if fname[-4:] != '.ffz':

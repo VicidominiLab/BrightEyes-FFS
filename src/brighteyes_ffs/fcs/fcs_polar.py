@@ -1,6 +1,6 @@
 import numpy as np
 from ..tools.find_nearest import find_nearest
-from scipy.ndimage.filters import gaussian_filter
+
 
 def sig(x, x0, a):
  return 1/(1 + np.exp(-a*(x-x0)))

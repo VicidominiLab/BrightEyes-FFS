@@ -1,7 +1,6 @@
 import numpy as np
 from datetime import datetime
 from .extract_spad_photon_streams import extract_spad_photon_streams
-from joblib import Parallel, delayed
 
 
 class Correlations:

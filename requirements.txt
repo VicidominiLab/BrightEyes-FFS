@@ -14,3 +14,4 @@ ome_types
 czifile
 brighteyes_ism
 notebook
+openpyxl

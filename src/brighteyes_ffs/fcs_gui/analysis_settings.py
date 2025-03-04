@@ -601,7 +601,7 @@ class CorrFit():
                 if np.abs(fitabsv) < 1e-2 or np.abs(fitabsv) > 999:
                     fitresString = str(fitabsv)[0:10]
                 else:
-                    fitresString = str(fitabsv)[0:4]
+                    fitresString = str(fitabsv)[0:5]
                 if i == 0:
                     stv[j] = fitresString
                 else:

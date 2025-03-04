@@ -114,6 +114,45 @@ def fcs_2c_analytical(tau, N, tauD1, tauD2, F, alpha=1, T=0, tautrip=1e-6, SF=5,
 
 
 def fcs_analytical_2c_anomalous(tau, N, tauD1, tauD2, alpha1, alpha2, F, T, tau_triplet, SF, offset, brightness):
+    """
+    Calculate the analytical fcs autocorrelation function assuming 3D Gaussian
+    diffusion with triplet state, afterpulsing and 2 components anomalous diffusion
+
+    Parameters
+    ----------
+    tau : 1D numpy array
+        Lag time [s] (vector).
+    N : scalar
+        Number of particles on average in the focal volume [dimensionsless]
+        N = w0^2 * z0 * c * pi^(3/2).
+        with c the average particle concentration
+    tauD1 : scalar
+        Diffusion time species 1 [s].
+    tauD2 : scalar
+        Diffusion time species 2 [s].
+    alpha1 : scalar
+        Anomalous diffusion parameter species 1
+    alpha2 : scalar
+        Anomalous diffusion parameter species 2
+    F : scalar
+        Fraction of species 1.
+    T : scalar, optional
+        Fraction in triplet. The default is 0.
+    tautrip : scalar
+        Residence time in triplet state [s]. The default is 1e-6.
+    SF : scalar
+        Shape factor of the PSF. The default is 5.
+    offset : scalar
+        Offset. The default is 0.
+    brightness : scalar
+        Relative brightness species2/species1
+
+    Returns
+    -------
+    Gy : 1D numpy array
+        Vector with the autocorrelation G(tau).
+
+    """
     # amplitude
     Gy = 1 / N
     
@@ -185,6 +224,42 @@ def fcs_dualfocus(tau, N, D, w, SF, rhox, rhoy, offset, vx=0, vy=0):
 
 
 def fcs_2c_2d_analytical(tau, N, tauD1, tauD2, F, alpha=1, T=0, tautrip=1e-6, offset=0, A=0, B=0):
+    """
+    Calculate the analytical fcs autocorrelation function assuming 2D free diffusion
+    with triplet state, afterpulsing and 2 components
+
+    Parameters
+    ----------
+    tau : 1D numpy array
+        Lag time [s] (vector).
+    N : scalar
+        Number of particles on average in the focal volume [dimensionsless]
+    tauD1 : scalar
+        Diffusion time species 1 [s].
+    tauD2 : scalar
+        Diffusion time species 2 [s].
+    F : scalar
+        Fraction of species 1.
+    alpha : scalar, optional
+        Relative molecular brightness q2/q1. The default is 1.
+    T : scalar, optional
+        Fraction in triplet. The default is 0.
+    tautrip : scalar, optional
+        Residence time in triplet state [s]. The default is 1e-6.
+    offset : scalar, optional
+        Offset. The default is 0.
+    A : scalar, optional
+        Afterpulsing characteristics. The default is 0.
+        Power law assumed: G = A * tau^B (with B < 0)
+    B : scalar, optional
+        Afterpulsing characteristics. The default is 0.
+
+    Returns
+    -------
+    Gy : 1D numpy array
+        Vector with the autocorrelation G(tau).
+
+    """
     # amplitude
     Gy = N * (F + alpha*(1-F))**2
     Gy = 1 / Gy
@@ -204,6 +279,42 @@ def fcs_2c_2d_analytical(tau, N, tauD1, tauD2, F, alpha=1, T=0, tautrip=1e-6, of
     return Gy
 
 def nanosecond_fcs_analytical(tau, A, c_ab, tau_ab, c_conf, tau_conf, c_rot, tau_rot, c_trip, tau_trip, tauD, SP):
+    """
+    Calculate the analytical fcs autocorrelation function for nanosecond fcs
+
+    Parameters
+    ----------
+    tau : 1D numpy array
+        Lag time [s] (vector).
+    A : scalar
+        Amplitude of the autocorrelation function.
+    c_ab : scalar
+        Amplitude of the antibunching effect.
+    tau_ab : scalar
+        Characteristic antibunching time [s].
+    c_conf : scalar
+        Amplitude of the conformational changes effect.
+    tau_conf : scalar
+        Characteristic time for the conformational changes time [s].
+    c_rot : scalar
+        Amplitude of the rotational diffusion.
+    tau_rot : scalar
+        Characteristic time for the rotational diffusion [s].
+    c_trip : scalar
+        Amplitude of the triplet effect.
+    tau_trip : scalar
+        Characteristic time for the triplet state [s].
+    tauD : scalar
+        Amplitude of the translational diffusion.
+    SP : scalar
+        Shape parameter.
+
+    Returns
+    -------
+    G : 1D numpy array
+        Vector with the autocorrelation G(tau).
+
+    """
     # source: Galvanetto et al., Nature, 2023
     G = A
     G *= (1 - c_ab * np.exp(-tau / tau_ab)) # antibunching
