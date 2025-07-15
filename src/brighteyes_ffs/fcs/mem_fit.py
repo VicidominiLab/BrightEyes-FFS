@@ -94,8 +94,9 @@ def mem_fit(fitparam, tau, yexp, fitfun=fcs_analytical, weights=1, startdistr='d
     while iter_f < Niter_f and not fitFound:
         exp2 = np.sum(f_fit) # Summation of all fractions.
         f_fit = f_fit / exp2 # Normalizing fractions, so G(0)=1.
-        for i in range(n_tau):
-            G_fit[i] = np.sum(fin_fit[:,i] * f_fit)
+        # for i in range(n_tau):
+        #     G_fit[i] = np.sum(fin_fit[:,i] * f_fit)
+        G_fit = np.einsum('ni,n->i', fin_fit, f_fit)
         G_fit = G_fit / G_fit[0] # Normalize G_fit.
         G_fit = G_fit * np.mean(mu[1:2]) # scaled to average amplitude of first two fcs points.
         
@@ -112,14 +113,16 @@ def mem_fit(fitparam, tau, yexp, fitfun=fcs_analytical, weights=1, startdistr='d
                 fitFound = True
                 
         # First order derivative of least-squares
-        DC = np.zeros((n_tauD))
-        for i in range(n_tauD):
-            DC[i] = np.sum(2 * Diff_C_E * fin_fit[i,:] / sigma_square) / M
+        # DC = np.zeros((n_tauD))
+        # for i in range(n_tauD):
+        #     DC[i] = np.sum(2 * Diff_C_E * fin_fit[i,:] / sigma_square) / M
+        DC = np.sum(2 * Diff_C_E * fin_fit / sigma_square, axis=1) / M
     
         # First order derivative of entropy
-        DS = np.zeros((n_tauD))
-        for i in range(n_tauD):
-            DS[i] = -1 - np.log10(f_fit[i])
+        # DS = np.zeros((n_tauD))
+        # for i in range(n_tauD):
+        #     DS[i] = -1 - np.log10(f_fit[i])
+        DS = -1 - np.log10(f_fit)
         
         # Scaling factor for balancing entropy and least squares in determining search direction.
         alpha[iter_f] = np.linalg.norm(DC) / np.linalg.norm(DS) / corrVentr

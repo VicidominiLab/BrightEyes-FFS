@@ -12,7 +12,12 @@ The fcs_gui module contains libraries for:
 
 * Storing and loading FCS/FFS analysis sessions, as used in the GUI
 
-The dataio module contains libraries for:
+The pch module contains libraries for:
+
+* Calculating photon counting histograms
+* Fitting PCH's
+
+The tools module contains libraries for:
 
 * Fitting various models to data (polynomial, Gaussian, power law, etc.)
 * Stokes-Einstein relation

@@ -19,6 +19,10 @@ def bindata(data, binsize):
 
     """
     
+    squeeze = False
+    if data.ndim == 1:
+        data = data[:, np.newaxis] 
+        squeeze = True
     cumdata = np.array(np.zeros([1, np.size(data, 1)]), dtype="uint32")
     cumdata = np.append(cumdata, np.uint32(np.cumsum(data, axis=0)), axis=0)
     bdata = cumdata[0::binsize, :]
@@ -28,10 +32,16 @@ def bindata(data, binsize):
         
     bdata = bdata[0:-1]
     
+    if squeeze:
+        bdata = np.squeeze(bdata)
     return bdata
 
 
 def bindata_chunks(data, binsize, printChunkNr=False):
+    squeeze = False
+    if data.ndim == 1:
+        data = data[:, np.newaxis] 
+        squeeze = True
     bdata = np.empty((0, np.size(data, 1)), int)
     N = np.size(data, 0)
     chunksize = np.min([int(binsize * np.floor(10e6 / binsize)), N])
@@ -43,4 +53,6 @@ def bindata_chunks(data, binsize, printChunkNr=False):
         newbindata = bindata(data[i*chunksize:(i+1)*chunksize, :], binsize)
         np.size(newbindata)
         bdata = np.append(bdata, newbindata, axis=0)
+    if squeeze:
+        bdata = np.squeeze(bdata)
     return bdata

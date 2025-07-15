@@ -725,7 +725,7 @@ class CorrFit():
         stv = ["NaN" for j in range(num_param)]
         bls = [False for j in range(num_param)]
         for j in range(len(fit.paramidx)):
-            fitabsv = fit.startvalues[-1-nparam+fit.paramidx[j]] / power10[j]
+            fitabsv = fit.startvalues[-nparam+fit.paramidx[j]] / power10[j]
             stv[j] = fitabsv
             bls[j] = bool(fit.fitarray[fit.paramidx[j]])
         stv[0] = len(tauD)
