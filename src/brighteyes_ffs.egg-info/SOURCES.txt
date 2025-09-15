@@ -62,8 +62,14 @@ src/brighteyes_ffs/fcs_gui/fitmodel_class.py
 src/brighteyes_ffs/fcs_gui/load_ffs_metadata.py
 src/brighteyes_ffs/fcs_gui/read_ffs.py
 src/brighteyes_ffs/fcs_gui/restore_session.py
+src/brighteyes_ffs/fcs_gui/session_to_excel.py
 src/brighteyes_ffs/fcs_gui/timetrace_end.py
+src/brighteyes_ffs/pch/data2pch.py
+src/brighteyes_ffs/pch/generate_psf.py
+src/brighteyes_ffs/pch/pch_fit.py
+src/brighteyes_ffs/pch/simulate_pch.py
 src/brighteyes_ffs/tools/__init__.py
+src/brighteyes_ffs/tools/analyze_fit_result.py
 src/brighteyes_ffs/tools/array2tiff.py
 src/brighteyes_ffs/tools/array2video.py
 src/brighteyes_ffs/tools/bindata.py

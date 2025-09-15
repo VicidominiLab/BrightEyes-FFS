@@ -99,12 +99,12 @@ def read_fitresults_from_ffs(libfile, read='active'):
         Path to .ffs file.
     read : str or list, optional
         Either 'active' to read the active file.
-        Otherwise list with four elemetnsThe default is 'active'.
+        Otherwise list with four elemetns. The default is 'active'.
 
     Returns
     -------
-    fitresults : TYPE
-        DESCRIPTION.
+    fitresults : np.array()
+        2D array [fitted values x fitted curve].
 
     """
     fitObj = read_ffs_file(libfile, read=read, returnObj='fit')
@@ -114,7 +114,16 @@ def read_fitresults_from_ffs(libfile, read='active'):
     fitresults = []
     for i in range(num_curves):
         is_fitted = fitObj.fit_all_curves[i].fitarray
-        fitresults.append((fitObj.fit_all_curves[i].startvalues[is_fitted[0:-1]]))
+        fitObj.fitresults_mem
+        fitfun_label = fitObj.fit_all_curves[i].fitfunction_label
+        if fitfun_label == 'Maximum entropy method free diffusion':
+            analysis = read_ffs_file(libfile, read=read, returnObj='analysis')
+            Gsingle = analysis.get_corr()
+            tau = Gsingle[:,0]
+            [fitresults_mem, tauD, _, _] = fitObj.fitresults_mem(tau, 7)
+            return np.transpose(fitresults_mem), tauD
+        else:
+            fitresults.append((fitObj.fit_all_curves[i].startvalues[is_fitted[0:-1]]))
     fitresults = np.asarray(fitresults)
     return fitresults
 

@@ -15,3 +15,5 @@ ome_types
 czifile
 pydantic<2.0
 brighteyes_ism
+notebook
+openpyxl
