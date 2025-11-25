@@ -172,13 +172,9 @@ def file_to_fcs_count(fname, datatype=np.uint16, n_points=-1, n_offset=0, h5data
             return None
     
         elements = raw.shape[0]
-        print(f"Elements: {elements}")
         positions = int(elements/2)
-        print(f"Positions: {positions}")
-    
-        print("Freeing memory")
+        
         out = np.zeros((positions , 25), dtype = datatype)
-        print("Done.")
         
         raw_pos = np.reshape(raw, (positions, 2))
         print(f"data table: {raw_pos.shape}")
@@ -190,7 +186,7 @@ def file_to_fcs_count(fname, datatype=np.uint16, n_points=-1, n_offset=0, h5data
     return out
 
 
-def czi2h5(fname):
+def czi2h5(fname, time_resolution=None):
     """
     Convert a Zeiss czi file to h5. The h5 file is stored in the same location 
 
@@ -198,6 +194,9 @@ def czi2h5(fname):
     ----------
     fname : str/path
         Path to the czi file
+    time_resolution : float
+        Dwell time of the measurement in us
+        If None, read from a text file with the same name as fname
 
     Returns
     -------
@@ -206,12 +205,14 @@ def czi2h5(fname):
 
     """
     out = np.squeeze(czifile.imread(fname))
-    mdata = get_file_info_czi(fname)
+    if time_resolution is None:
+        mdata = get_file_info_czi(fname)
+        time_resolution = mdata.timeResolution
     while len(np.shape(out)) > 3:
         out = out[:,0]
     out = np.transpose(out.reshape((32,out.shape[1]*out.shape[2])))
     fname_h5 = fname[:-4] + ".h5"
-    fname_h5 = numpy2h5(fname_h5, out, mdata.timeResolution)
+    fname_h5 = numpy2h5(fname_h5, out, time_resolution)
     return fname_h5
 
 

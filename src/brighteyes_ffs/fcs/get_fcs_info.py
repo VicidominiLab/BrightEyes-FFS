@@ -3,6 +3,7 @@ from os import path as pth
 from ..tools.h5data import h5data
 from tifffile import TiffFile
 import czifile
+import h5py
 
 class infoObj:
     pass
@@ -95,7 +96,7 @@ def get_file_info(fname, parameter=['all']):
     Parameters
     ----------
     fname : TYPE
-        File name [.._info.txt] or [..h5].
+        File name [*_info.txt] or [*.h5].
     parameter : TYPE, optional
         Name of the parameter to return
         E.g. "READING SPEED [kHz]" will return the reading speed
@@ -236,18 +237,54 @@ def get_file_info_h5(fname):
     
     output = infoObj()
     
-    output.numberOfTbinsPerPixel = file.tbinpx()
-    output.numberOfPixels = file.nx()
-    output.numberOfLines = file.ny()
-    output.numberOfFrames = file.nz()
-    output.rangeX = file.rangex()        
-    output.rangeY = file.rangey()        
-    output.rangeZ = file.rangez()
-    output.numberOfDataPoints = file.ndatapoints()
-    output.timeResolution = file.tres()
-    output.dwellTime = file.tres() * 1e-6 # s
-    output.duration = file.duration() # s
-    output.pxsize = file.pxsize()
+    try:
+        output.numberOfTbinsPerPixel = file.tbinpx()
+    except:
+        output.numberOfTbinsPerPixel = 1
+    try:
+        output.numberOfPixels = file.nx()
+    except:
+        output.numberOfPixels = 1
+    try:
+        output.numberOfLines = file.ny()
+    except:
+        output.numberOfLines = 1
+    try:
+        output.numberOfFrames = file.nz()
+    except:
+        output.numberOfFrames = 1
+    try:
+        output.rangeX = file.rangex()
+    except:
+        output.rangeX = 0
+    try:
+        output.rangeY = file.rangey()
+    except:
+        output.rangeY = 0
+    try:
+        output.rangeZ = file.rangez()
+    except:
+        output.rangeZ = 0
+    try:
+        output.numberOfDataPoints = file.ndatapoints()
+    except:
+        output.numberOfDataPoints = 0
+    try:
+        output.timeResolution = file.tres()
+    except:
+        output.timeResolution = 1e-6 # us
+    try:
+        output.dwellTime = file.tres() * 1e-6 # s
+    except:
+        output.dwellTime = 1e-12 # s
+    try:
+        output.duration = file.duration() # s
+    except:
+        output.duration = get_duration_from_h5_timetagging_data(fname)
+    try:
+        output.pxsize = file.pxsize()
+    except:
+        output.pxsize = 0
     
     return output
 
@@ -335,3 +372,16 @@ def get_fcs_info_singleparam(contents, parameter):
     if stop == -1:
         stop = len(contents)
     return contents[start:stop]
+
+def get_duration_from_h5_timetagging_data(fname):
+    max_values = {}
+    with h5py.File(fname, 'r') as f:
+        for name in f.keys():
+            if name.startswith('det'):
+                data = f[name][()]  # read the dataset as a NumPy array
+                if data.size > 0:
+                    max_values[name] = data.max()
+                else:
+                    max_values[name] = None
+    abs_max = 1e-12 * max(abs(v) for v in max_values.values() if v is not None) # s
+    return abs_max

@@ -1,13 +1,25 @@
 import matplotlib.pyplot as plt
+from matplotlib.patches import RegularPolygon
 import numpy as np
 from .distance2detelements import distance2detelements
+from .detectors import detector_element_coordinates
 from ..tools.cast_data import cast_data
-from brighteyes_ism.simulation.detector import hex_grid
+from ..tools.color_from_map import color_from_map
+      
 
-def plot_fingerprint_airyscan(counts, plot=False):
+def plot_fingerprint_airyscan(counts, cmap='inferno', plot=False, figsize=(5,5)):
     """
     Plot the airyscan fingerprint from a data set with the photon counts for
-    each of the 32 detector elements
+    each of the 32 detector elements.
+    The elements in counts are plotted in the following way:
+    
+            22  21
+      23  10  9   8  20
+    24  11  2   1   7  19
+      12  3   0   6  18  31
+    25  13  4   5  17  30
+      26 14  15  16  29
+           27  28
 
     Parameters
     ----------
@@ -19,72 +31,132 @@ def plot_fingerprint_airyscan(counts, plot=False):
 
     Returns
     -------
+    sx, sy : list
+        x and y coordinates of the hexagons
+    c : np.array()
+        2D array with RGBA values for each hexagon
+
+    """
+    
+    sx = detector_element_coordinates('airyscan')
+    n_elements= len(sx)
+    
+    cmin = np.min(counts)
+    cmax = np.max(counts)
+    if cmax == cmin:
+        cmax = cmin + 1
+    color_code = np.zeros((n_elements, 3))
+    
+    for i in range(n_elements):
+        color_code[i,:] = color_from_map(counts[i], startv=cmin, stopv=cmax, cmap=cmap)
+    
+    if plot:
+        plt.figure(figsize=figsize)
+        ax = plt.subplot(1,1,1)
+        for x, y, c in zip(sx[:,0], sx[:,1], color_code):
+            color = c
+            ax.add_patch(RegularPolygon((x, y),
+                                        numVertices=6,
+                                        radius=0.55, 
+                                        orientation=np.radians(120),
+                                        facecolor = color,
+                                        alpha=1))
+        
+        plt.xlim([-3,3])
+        plt.ylim([-3,3])
+        plt.xticks([])
+        plt.yticks([])
+        ax.set_axis_off()
+        ax.set_box_aspect(1)
+    
+    return list(sx[:,0]), list(sx[:,1]), color_code
+
+
+def plot_fingerprint_luminosa(counts, cmap='inferno', plot=False, figsize=(5,5)):
+    """
+    Plot the airyscan fingerprint from a data set with the photon counts for
+    each of the 23 (or 32) detector elements.
+    
+    List order either
+
+    31  30  29  28  27
+      26  25  24  23
+    22  21  20  19  18
+      17  16  15  14
+    13  12  11  10  09
+
+
+    Or
+    
+    22  21  20  19  18
+      17  16  15  14
+    13  12  11  10  09
+      08  07  06  05
+    04  03  02  01  00
+
+    Parameters
+    ----------
+    counts : np.array
+        1D array with the 23 photon counts of the luminosa finger print.
+        Either 23 elements or 32 elements with first 9 elements 0
+    plot : boolean, optional
+        Plot the finger print
+
+    Returns
+    -------
     hexb : np.array()
         Array for hexbin plotting
 
     """
     
-    N = 11  # Number of elements
-    s2 = hex_grid(N, np.linspace(0, N - 1, N))
+    sx = detector_element_coordinates('luminosa')
+    sx = sx[9:,:]
+    n_elements= len(sx)
     
-    hexb = np.zeros((66))
+    if len(counts) == 32:
+        counts = counts[9:]
     
-    hexb[0:19] = 0
-    hexb[20] = counts[27]
-    hexb[21] = counts[28]
-    hexb[22] = 0
-    hexb[23] = 0
-    hexb[24] = counts[26]
-    hexb[25] = counts[14]
-    hexb[26] = counts[15]
-    hexb[27] = counts[16]
-    hexb[28] = counts[29]
-    hexb[29] = 0
-    hexb[30] = counts[25]
-    hexb[31] = counts[13]
-    hexb[32] = counts[4]
-    hexb[33] = counts[5]
-    hexb[34] = counts[17]
-    hexb[35] = counts[30]
-    hexb[36] = counts[12]
-    hexb[37] = counts[3]
-    hexb[38] = counts[0]
-    hexb[39] = counts[6]
-    hexb[40] = counts[18]
-    hexb[41] = counts[31]
-    hexb[42] = counts[24]
-    hexb[43] = counts[11]
-    hexb[44] = counts[2]
-    hexb[45] = counts[1]
-    hexb[46] = counts[7]
-    hexb[47] = counts[19]
-    hexb[48] = counts[23]
-    hexb[49] = counts[10]
-    hexb[50] = counts[9]
-    hexb[51] = counts[8]
-    hexb[52] = counts[20]
-    hexb[53] = 0
-    hexb[54] = 0
-    hexb[55] = 0
-    hexb[56] = counts[22]
-    hexb[57] = counts[21]
-    hexb[58:65] = 0
+    cmin = np.min(counts)
+    cmax = np.max(counts)
+    if cmax == cmin:
+        cmax = cmin + 1
+    color_code = np.zeros((n_elements, 3))
     
+    for i in range(n_elements):
+        color_code[i,:] = color_from_map(counts[i], startv=cmin, stopv=cmax, cmap=cmap)
+    
+    # make a plot of the detector array
     if plot:
-        fig, ax = plt.subplots()
-        ax.set_facecolor("black")
-        plt.hexbin(s2[1], s2[0], C=hexb, gridsize=[6,5], cmap="inferno", linewidths=0.5, edgecolors="k")
-        plt.colorbar(label="Cell Value")
-        plt.xlim([-0.5,5.5])
-        plt.ylim([2,8.5])
+        plt.figure(figsize=figsize)
+        ax = plt.subplot(1,1,1)
+        for x, y, c in zip(sx[:,0], sx[:,1], color_code):
+            color = c
+            ax.add_patch(RegularPolygon((x, y),
+                                        numVertices=6,
+                                        radius=0.55, 
+                                        orientation=np.radians(120),
+                                        facecolor = color,
+                                        alpha=1))
+        
+        plt.xlim([-3,3])
+        plt.ylim([-3,3])
         plt.xticks([])
         plt.yticks([])
+        ax.set_axis_off()
         ax.set_box_aspect(1)
-    return s2, hexb
+    
+    return list(sx[:,0]), list(sx[:,1]), color_code
 
-def plot_airy(data, show_perc=True, dtype='int64', normalize=False, savefig=0, vminmax = 'auto'):
+
+def plot_fingerprint5x5(data, show_perc=True, dtype='int64', normalize=False, savefig=0, vminmax = 'auto'):
     """
     Make finger print plot of SPAD-fcs data with 25 channels.
+    
+     0  1  2  3  4
+     5  6  7  8  9
+    10 11 12 13 14
+    15 16 17 18 19
+    20 21 22 23 24
 
     Parameters
     ----------

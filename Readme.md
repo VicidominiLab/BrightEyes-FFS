@@ -3,9 +3,9 @@
 A toolbox for analysing Fluorescence Correlation Spectroscopy (FCS) and Fluorescence Fluctuation Spectroscopy (FFS) data with array detectors.
 The fcs module contains libraries for:
 
-* Calculating autocorrelations and cross-correlations of raw FCS/FFS data (i.e. photon counts vs. time)
+* Calculating autocorrelations and cross-correlations of raw FCS/FFS data (i.e. photon counts vs. time or photon arrival time traces). Supported file types include .h5, .ptu, and .czi.
 * Fitting correlations to various 2D and 3D diffusion models
-* Calibration-free FCS/FFS analysis such as circular-scanning FCS and iMSD analysis
+* Calibration-free FCS/FFS analysis such as circular-scanning FCS and pair-correlation analysis
 * Miscellaneous tools
 
 The fcs_gui module contains libraries for:
@@ -15,7 +15,7 @@ The fcs_gui module contains libraries for:
 The pch module contains libraries for:
 
 * Calculating photon counting histograms
-* Fitting PCH's
+* Fitting histograms with Fluorescence Intensity Distribution Analysis (FIDA)
 
 The tools module contains libraries for:
 
@@ -56,21 +56,26 @@ It requires the following Python packages
 	czifile
 	brighteyes_ism
 	notebook
+	ptufile
 
 ## Getting started 
 
 ### Supported file types
 
-The current version of the package can read FFS data in .h5, .tiff, and .czi files. For .h5 files generated with BrightEyes-MCS, no pre-processing is needed. For custom .h5 files, make sure to use the keyword 'data' to store the [Nt x Nc] array of FFS data, with *Nt* the number of time points and *Nc* the number of channels (detector elements). The easiest way to generate correct .h5 files is with the function *brighteyes_ffs.fcs.meas_to_count.numpy2h5*, which takes a 2D numpy array as input. For .tiff, make sure the data contains one page with a 2D array [Nt x Nc]. For .czi files, the data is automatically converted to .h5 upon calculating the correlation.
+The current version of the package can read FFS data in .h5, .tiff, .ptu, and .czi files.
 
-For .tiff files, make sure the dwell time in microseconds is stored as a tag called 'dwell_time'.
+For .h5 files generated with BrightEyes-MCS, no pre-processing is needed. For custom .h5 files, make sure to use the keyword 'data' to store the [Nt x Nc] array of FFS data, with *Nt* the number of time points and *Nc* the number of channels (detector elements). The easiest way to generate correct .h5 files is with the function *brighteyes_ffs.fcs.meas_to_count.numpy2h5*, which takes a 2D numpy array as input. If the data contains photon arrival times, the file must contain datasets called "det0", "det1", etc., with each dataset a 2D array [Np x 2] with *Np* the number of photons, the first column the macrotime in ps, and the second column the microtime in ps.
 
-For .czi files, the dwell time cannot be automatically read. Instead, make sure a .txt file with the following syntax is stored in the same location as the .czi file. If your file is located at *my_path/my_file.czi*, then add a .txt file with the same name, i.e. *my_path/my_file.txt*, with exactly the following information:
+For .tiff, make sure the data contains one page with a 2D array [Nt x Nc]. Make sure the dwell time in microseconds is stored as a tag called 'dwell_time'.
+
+For .czi files, the data is automatically converted to .h5 upon calculating the correlation. However, the dwell time cannot be automatically read. Instead, make sure a .txt file with the following syntax is stored in the same location as the .czi file. If your file is located at *my_path/my_file.czi*, then add a .txt file with the same name, i.e. *my_path/my_file.txt*, with exactly the following two lines of information:
 
 	DWELL TIME [us]
 	17
 
 Replace *17* with your actual dwell time in microseconds. BrightEyes-FFS will automatically generate an .h5 file stored in the same location.
+
+For .ptu files taken with the PicoQuant Luminosa PDA-23 array detector, no pre-processing is needed.
 
 ### Calculating correlations
 
@@ -88,7 +93,7 @@ G is an object with 2D arrays (tau, G) for each correlation in list_of_g and eac
 To remove bad chunks of data, e.g. caused by a bright aggregate entering the focal volume, use the following code:
 
 	good_chunks = [0, 1, 4, 5, 6, 7, 8, 9] # list with the good chunks of data, i.e., remove chunks 2 and 3 from further analysis
-	G = fcs_av_chunks(G, good_chunks)
+	G.average_chunks(good_chunks)
 	
 The output of *fcs_av_chunks* is the same object as before, but now containing attributes such as *G.central_averageX*, where the *X* stands for the custom average of the good chunks only.
 

@@ -1,14 +1,14 @@
 import numpy as np
 
 
-def lifetimehist(data, m_bins=260, laser_freq=80e6):
+def lifetimehist(data, m_bins=260, laser_freq=80e6, microtime=1e-12):
     """
     Make lifetime histograms of all channels
 
     Parameters
     ----------
     data : object
-        data object with macro and microtimes.
+        data object with macro and microtimes in ps.
     m_bins : int, optional
         number of microtime bins. The default is 260.
     laser_freq : float, optional
@@ -16,24 +16,22 @@ def lifetimehist(data, m_bins=260, laser_freq=80e6):
 
     Returns
     -------
-    data : object
-        same data object as input, but with histograms added.
+    nothing, in-place change of data object
 
     """
     
     # get list of detector fields
     listOfFields = list(data.__dict__.keys())
     listOfFields = [i for i in listOfFields if i.startswith('det')]
-    Ndet = len(listOfFields)
     
-    for det in range(Ndet):
+    for i, det in enumerate(listOfFields):
         
         # macrotimes
-        macroTime = getattr(data, "det" + str(det))[:,0] # ps
+        macroTime = getattr(data, det)[:,0] # ps
         
         # calculate proper microtimes
-        microTime = getattr(data, "det" + str(det))[:,1]
-        microTime = np.mod(microTime, 1 / data.microtime / laser_freq)
+        microTime = getattr(data, det)[:,1]
+        microTime = np.mod(microTime, 1 / microtime / laser_freq)
         microTime = -microTime + np.max(microTime)
         
         # make histogram of microtimes
@@ -44,4 +42,3 @@ def lifetimehist(data, m_bins=260, laser_freq=80e6):
         setattr(data, "hist" + str(det), np.transpose(np.stack((lifetimeBins, Ihist))))
         setattr(data, "det" + str(det), np.transpose([macroTime, microTime]))
         
-    return data

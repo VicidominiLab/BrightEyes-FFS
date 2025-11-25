@@ -8,9 +8,10 @@ from ..tools.list_files import list_files
 from ..tools.closefile import closefile
 
 import libttp.ttp as ttp
+import ptufile
 
 
-def load_atimes_data(fname, channels=21, sysclk_MHz=240):
+def load_atimes_data(fname, channels='auto', sysclk_MHz=240, perform_calib=True):
     """
     Load multichannel arrival times data from .hdf5 file and store in data object
     for further processing. Used for data collected by the BrightEyes-TTM.
@@ -24,9 +25,13 @@ def load_atimes_data(fname, channels=21, sysclk_MHz=240):
     channels : int or list of int, optional
         Either number describing the number of channels (typically 21 or 25)
         or list of channels that have to be loaded, e.g. [15, 17, 18].
-        The default is 21.
+        The default is all channels, 'auto'.
     sysclk_MHz : int, optional
         System clock frequency [MHz]. The default is 240.
+        If data is already in [macrotime, microtime] format, then this is not used
+    perform_calib : boolean
+        If data is already in [macrotime, microtime] format, then False
+        If True: the calibration to convert to the right format is performed
 
     Returns
     -------
@@ -39,28 +44,76 @@ def load_atimes_data(fname, channels=21, sysclk_MHz=240):
 
     """
     
-    if isinstance(channels, int):
-        # total number of channels is given, e.g. 21
-        Nchannels = channels
-        channels = [str(x) for x in range(channels)]
-    else:
-        # individual channel numbers are given, e.g. [15, 17, 18]
-        channels = [str(x) for x in channels]
-        Nchannels = len(channels)
-    
     data = ATimesData()
     
-    if fname[-4:] == "hdf5":
+    # -------------------- HDF5 file --------------------
+    if fname[-4:] == "hdf5" or (fname[-3:] == ".h5" and perform_calib == False):
+        if isinstance(channels, int):
+            # total number of channels is given, e.g. 21
+            Nchannels = channels
+            channels = [str(x) for x in range(channels)]
+        elif isinstance(channels, str) and channels == 'auto':
+            # load all channels
+            Nchannels = atimes_file_2_nch(fname)
+            channels = [str(x) for x in range(Nchannels)]
+        else:
+            # individual channel numbers are given, e.g. [15, 17, 18]
+            channels = [str(x) for x in channels]
+            Nchannels = len(channels)
+            
         with h5py.File(fname, 'r') as f:
             for ch in channels:
-                print('Loading channel ' + ch)
                 setattr(data, 'det' + ch, f['det' + ch][()])
         f.close()
+        
+    # -------------------- PTU file --------------------
+    elif fname[-4:] == ".ptu":
+        ptu = ptufile.PtuFile(fname)
+        decoded = ptu.decode_records()
+        macrotime = decoded['time'].astype(float)
+        channel = decoded['channel'].astype(float)
+        microtime = decoded['dtime'].astype(float)
+        
+        if np.any(channel < 0):
+            valid = channel >= 0
+            macrotime = macrotime[valid]
+            channel = channel[valid]
+            microtime = microtime[valid]
+        
+        channel += 1
+        channels_all = np.unique(channel)
+        macrotime_res = ptu.global_resolution
+        microtime_res = ptu.tcspc_resolution # in s
+        macrotime *= macrotime_res * 1e12 # in ps
+        microtime *= microtime_res * 1e12 # in ps
+        
+        if isinstance(channels, str) and channels == 'auto':
+            # load all channels
+            channels = channels_all
+        
+        for ch in channels:
+            data_single_ch = np.column_stack((macrotime[channel==ch], microtime[channel==ch]))
+            setattr(data, 'det' + str(int(ch)), data_single_ch)
+    
+    # -------------------- Raw TTM file --------------------
     elif fname[-2:] == "h5":
+        
+        if isinstance(channels, int):
+            # total number of channels is given, e.g. 21
+            Nchannels = channels
+            channels = [str(x) for x in range(channels)]
+        elif isinstance(channels, str) and channels == 'auto':
+            # load all channels
+            Nchannels = atimes_file_2_nch(fname)
+            channels = [str(x) for x in range(Nchannels)]
+        else:
+            # individual channel numbers are given, e.g. [15, 17, 18]
+            channels = [str(x) for x in channels]
+            Nchannels = len(channels)
+        
         calibDict=ttp.calculateCalibFromH5(filenameH5=fname, listChannel=range(0,Nchannels))
         data = ATimesData()
         for ch in channels:
-            print('Loading channel ' + ch)
             df = ttp.applyCalibDict(fname, channel=int(ch), calibDict=calibDict)
             macrotime = df['cumulative_step'] / (1e6 * sysclk_MHz) * 1e12
             microtime = df['dt_' + ch]            
@@ -98,9 +151,113 @@ def write_atimes_data(data, channels, fname):
         channels = [str(x) for x in channels]
     
     with h5py.File(fname, 'w') as f:
-        for ch in range(21):
+        for ch in channels:
             f.create_dataset('det' + str(ch), data=getattr(data, 'det' + str(ch)))
+    
 
+def atimes_data_2_duration(data, macrotime=1.0, subtract_start_time=False, return_period=False):
+    """
+    Return duration of a TCSPC measurement or duration of a pulse period
+
+    Parameters
+    ----------
+    data : Object
+        With field det0, det1, etc. with each field a 2D np.array()
+        with the first column the macrotimes, and the second column the microtimes.
+    macrotime : float, optional
+        Macrotime units in s. Typically the macrotimes are in ps, hence 1e-12.
+        The default is 1.
+    subtract_start_time : boolean
+        Subtract the start time, so duration = last photon time - first photon time
+    return_period : boolean
+        If False: return duration of the measurement
+        If True: return maximum microtime
+
+    Returns
+    -------
+    duration : float
+        Measurement time in s. Calculated from the very last photon
+        Or Maximum microtime
+
+    """
+    all_ch = atimes_data_2_channels(data)
+    
+    column = 0
+    if return_period:
+        column = 1
+    
+    # check for last photon
+    atime_last_photon = 0
+    for idx, ch in enumerate(all_ch):
+        data_single_ch = getattr(data, ch)
+        atime_last_photon = np.max([atime_last_photon, np.max(data_single_ch[:,column], 0)])
+    
+    # check for first photon
+    atime_first_photon = atime_last_photon
+    for idx, ch in enumerate(all_ch):
+        data_single_ch = getattr(data, ch)
+        atime_first_photon = np.min([atime_first_photon, np.min(data_single_ch[:,column], 0)])
+    
+    # duration in arbitrary units
+    if subtract_start_time:
+        atime_last_photon -= atime_first_photon
+    
+    # duration in s
+    duration = macrotime * atime_last_photon
+    
+    return duration
+
+
+def atimes_data_2_channels(data):
+    all_ch = [int(k[3:]) for k in dir(data) if k.startswith('det')]
+    all_ch = ['det'+str(i) for i in sorted(all_ch)]
+    return all_ch
+
+
+def atimes_data_attr_2_ch(attribute_name):
+    # convert attribute name to channel number
+    # e.g. 'det31' returns 31
+    return int(attribute_name[3:])
+
+
+def atimes_file_2_nch(fname):
+    """
+    Get number of channels from h5 TCSPC file
+
+    Parameters
+    ----------
+    fname : string
+        Path to h5 file or ptu file.
+
+    Returns
+    -------
+    n_ch : int
+        Number of channels, typically 25 for a 5x5 array.
+
+    """
+    
+    if fname[-3:] == ".h5" or fname[-5:] == ".hdf5":
+        with h5py.File(fname, "r") as f:
+            datasets = []
+            f.visititems(lambda name, obj: datasets.append(name) if isinstance(obj, h5py.Dataset) else None)
+            n_ch = 0
+            for d in datasets:
+                if d.startswith('det'):
+                    n_ch += 1
+        return n_ch
+
+    if fname[-4:] == ".ptu":
+        ptu = ptufile.PtuFile(fname)
+        decoded = ptu.decode_records()
+        channel = decoded['channel'].astype(float)
+        
+        if np.any(channel < 0):
+            valid = channel >= 0
+            channel = channel[valid]
+        
+        channels_all = np.unique(channel)
+        return len(channels_all)
+    
 
 def load_atimes_data_pandas(fname, chunksize=1000000, macro_freq=240e6):
     """

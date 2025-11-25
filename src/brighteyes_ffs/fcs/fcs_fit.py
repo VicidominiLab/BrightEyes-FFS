@@ -1,12 +1,12 @@
 import numpy as np
 from scipy.optimize import least_squares
-import matplotlib.pyplot as plt
 from .fcs_analytical import fcs_analytical, fcs_dualfocus, fcs_2c_analytical, fcs_2c_2d_analytical, fcs_analytical_2c_anomalous, nanosecond_fcs_analytical, uncoupled_reaction_diffusion
 from .plot_pycorrfit import plot_pycorrfit, PyCorrfit_data
 from .mem_fit import mem_fit_free_diffusion
+from ..pch.pch_fit import make_fit_parameters_global_fit, make_2D_fit_parameter_array_global_fit, hist_param, global_fit_result_to_parameters, global_fit_result_to_residuals
 
 
-def fcs_fit(Gexp, tau, fitfun, fit_info, param, lBounds, uBounds, plotInfo, splitData=0, savefig=0, plotTau=True, weights=1):
+def fcs_fit(Gexp, tau, fitfun, fit_info, param, lBounds, uBounds, plotInfo, savefig=0, plotTau=True, weights=1, global_param=None):
     """
     Fit experimental fcs data to the analytical model
     Assuming 3D diffusion in a Gaussian focal volume
@@ -34,32 +34,31 @@ def fcs_fit(Gexp, tau, fitfun, fit_info, param, lBounds, uBounds, plotInfo, spli
         A ~ 1e6*2.5e-8
         B ~ -1.05.
     lBounds : 1D numpy array
-        Lower bounds for the fit parameters.
+        Lower bounds for ALL parameters.
     uBounds : 1D numpy array
-        Upper bounds for the fit parameters.
+        Upper bounds for ALL parameters.
     plotInfo : string
         "central", "sum3", or "sum5". Determines only the color of the plot
         -1 to not plot the figure.
-    splitData : scalar, optional
-        The default is 0.
     savefig : scalar or string, optional
         0 to not plot but not save the figure
         file name with extension to save as "png" or "eps". The default is 0.
-    plotTau : TYPE, optional
-        DESCRIPTION. The default is True.
-    weights : TYPE, optional
-        DESCRIPTION. The default is 1.
+    plotTau : boolean, optional
+        Plot option. The default is True.
+    weights : int or 1D np.array(), optional
+        Weights for the fit. The default is 1.
 
     Returns
     -------
     fitresult : object
         Output of least_squares
-        fitresult.x = fit results
+        fitresult.x: parameter results (both fitted and fixed)
             tauD in [ms].
+        fitresult.fun: residuals
 
     """
     
-    if fitfun != 'mem_fit_free_diffusion' and fitfun != mem_fit_free_diffusion:
+    if fitfun != 'mem_fit_free_diffusion' and fitfun != mem_fit_free_diffusion and fitfun != fcs_fit_dualfocus:
         fitparamStart = param[fit_info==1]
         fixedparam = param[fit_info==0]
         lowerBounds = lBounds[fit_info==1]
@@ -71,7 +70,7 @@ def fcs_fit(Gexp, tau, fitfun, fit_info, param, lBounds, uBounds, plotInfo, spli
         if fitfun == 'fitfun_an':
             fitresult = least_squares(fitfun_an, fitparamStart, args=(fixedparam, fit_info, tau, Gexp, weights), bounds=(lowerBounds, upperBounds))
         elif fitfun == 'fitfun_dualfocus':
-            fitresult = least_squares(fitfun_dualfocus, fitparamStart, args=(fixedparam, fit_info, tau, Gexp, splitData, weights), bounds=(lowerBounds, upperBounds))
+            fitresult = least_squares(fitfun_dualfocus, fitparamStart, args=(fixedparam, fit_info, global_param, tau, Gexp, weights), bounds=(lowerBounds, upperBounds))
         elif fitfun == 'fitfun_circfcs':
             fitresult = least_squares(fitfun_circfcs, fitparamStart, args=(fixedparam, fit_info, tau, Gexp, weights), bounds=(lowerBounds, upperBounds))
         elif fitfun == 'mem_fit_free_diffusion':
@@ -82,23 +81,34 @@ def fcs_fit(Gexp, tau, fitfun, fit_info, param, lBounds, uBounds, plotInfo, spli
             fitresult = least_squares(fcs_analytical_2c_anomalous, fitparamStart, args=(fixedparam, fit_info, tau, Gexp, weights), bounds=(lowerBounds, upperBounds))
     else:
         if fitfun == fitfun_dualfocus:
-            fitresult = least_squares(fitfun_dualfocus, fitparamStart, args=(fixedparam, fit_info, tau, Gexp, splitData, weights), bounds=(lowerBounds, upperBounds))
+            fitresult = least_squares(fitfun_dualfocus, fitparamStart, args=(fixedparam, fit_info, global_param, tau, Gexp, weights), bounds=(lowerBounds, upperBounds))
         elif fitfun == mem_fit_free_diffusion:
             fitresult = mem_fit_free_diffusion(param, tau, Gexp, weights)
         elif fitfun == fcs_fit_dualfocus:
-            fitresult = fcs_fit_dualfocus(Gexp, tau, fit_info, param, useSingleW=True, weights=weights)
+            fitresult = fcs_fit_dualfocus(Gexp, tau, fit_info, param, weights=weights, global_param=global_param)
         else:
             fitresult = least_squares(fitfun, fitparamStart, args=(fixedparam, fit_info, tau, Gexp, weights), bounds=(lowerBounds, upperBounds))
 
-    fitresult.fun /= weights
-
+    n_corr, _ = hist_param(Gexp)
+    
+    if n_corr > 1:
+        # multiple curves were fitted simultaneously
+        fitresult.x = global_fit_result_to_parameters(param, fit_info, n_corr, global_param, fitresult.x)
+        fitresult.fun = global_fit_result_to_residuals(fitresult.fun, Gexp, n_corr, weights, minimization='absolute')
+    else:
+        # only one curve fitted
+        if fitfun != 'mem_fit_free_diffusion' and fitfun != mem_fit_free_diffusion:
+            fitresult.fun /= weights
+            param[fit_info==1] = fitresult.x
+            fitresult.x = param
+    
     if plotInfo != -1:
         plot_fit(tau, Gexp, param, fit_info, fitresult, plotInfo, savefig, plotTau)
     
     return fitresult
 
 
-def fcs_fit_dualfocus(Gexp, tau, fit_info, param, plotResults=False, useSingleW=False, weights=1):
+def fcs_fit_dualfocus(Gexp, tau, fit_info, param, weights=1, global_param=None):
     """
     Fit experimental fcs data to the analytical model
     Assuming 3D diffusion in a Gaussian focal volume
@@ -113,15 +123,19 @@ def fcs_fit_dualfocus(Gexp, tau, fit_info, param, plotResults=False, useSingleW=
         Vector with tau values for a single autocorrelation curve [s].
     fit_info : 1D np.array
         np.array boolean vector with
-        [c, D, w0, ..., wN, SF0, ..., SFN, rhox0, ..., rhoxN, rhoy0, ..., rhoyN, vx, vy, dc0, ..., dcN]
+        [c, D, w0, SF, rhox, rhoy, vx, vy, dc]
         1 if this value has to be fitted
         0 if this value is fixed during the fit.
-    param : 1D np.array
+    param : 2D np.array
         vector with start values for all the parameters.
+        Each column corresponds to a different correlation curve.
     plotResults : boolean, optional
         Plot results. The default is True.
-    useSingleW : boolean, optional
-        Use a single w0 value for all curves. The default is False.
+    weights : int or 1D np.array()
+        Weights for the fit
+    global_param : list or None
+        Boolean list of length len(fit_info)
+        True for global parameters, False for individual parameters
 
     Returns
     -------
@@ -129,95 +143,22 @@ def fcs_fit_dualfocus(Gexp, tau, fit_info, param, plotResults=False, useSingleW=
         Output of least_squares.
 
     """
-
-    fitparamStart = param[fit_info==1]
-    fixedparam = param[fit_info==0]
     
-    # concatenate all G vectors in single array
-    if len(np.shape(Gexp)) == 1:
-        # Gexp is vector: only one G given
-        NG = 1
+    n_corr, _ = hist_param(Gexp)
+    n_param = len(fit_info)
+    
+    if global_param is None:
+        global_param = [False for i in range(n_param)]
+    
+    dummy_bounds = [0 for i in range(len(fit_info))]
+    
+    if n_corr > 1:
+        fitparam_start, fixed_param, _, _ = make_fit_parameters_global_fit(param, fit_info, n_corr, global_param, dummy_bounds, dummy_bounds)
     else:
-        NG = np.size(Gexp, 1)
-    Ntau = np.size(Gexp, 0)
-    Gall = np.reshape(np.transpose(Gexp), [Ntau * NG])
-    tauall = np.concatenate([tau for i in range(NG)])
-    # create vector with ranges of individual correlations
-    splitData = [i*Ntau for i in range(NG+1)]
+        fitparam_start = param[fit_info==1]
+        fixed_param = param[fit_info==0]
     
-    fitresult = least_squares(fitfun_dualfocus, fitparamStart, args=(fixedparam, fit_info, tauall, Gall, splitData, useSingleW, weights))
-    
-    # plot fit result
-    if plotResults:
-        Dfitted = param[2]**2 / 4 / (1e-3 * fitresult.x[1])
-        residuals = fitresult.fun
-        Gfitresult = Gall - residuals
-        plt.figure()
-        for i in range(NG):
-            plt.plot(tau, Gfitresult[splitData[i]:splitData[i+1]])
-        plt.xscale('log')
-        plt.xlabel('tau (s)')
-        plt.ylabel('G')
-        plt.ylim([np.min(Gall), np.max(Gall)])
-        plt.title('Fit results - Fitted D = ' + "{:.2e}".format(1e12*Dfitted) + ' µm^2/s')
-        if NG == 6:
-            leg = ['$\Delta r = 0$', '$\Delta r = 1$', '$\Delta r = \sqrt{2}$', '$\Delta r = 2$', '$\Delta r = \sqrt{5}$', '$\Delta r = 2\sqrt{2}$']
-            plt.legend(leg)
-        elif NG == 5:
-            leg = ['$\Delta r = 1$', '$\Delta r = \sqrt{2}$', '$\Delta r = 2$', '$\Delta r = \sqrt{5}$', '$\Delta r = 2\sqrt{2}$']
-            plt.legend(leg)
-        plt.tight_layout()
-        
-        # plot fit residuals
-        residuals = fitresult.fun
-        plt.figure()
-        for i in range(NG):
-            plt.plot(tau, residuals[splitData[i]:splitData[i+1]])
-        plt.xscale('log')
-        plt.xlabel('tau (s)')
-        plt.ylabel('G')
-        plt.title('Fit residuals')
-        if NG == 6:
-            leg = ['$\Delta r = 0$', '$\Delta r = 1$', '$\Delta r = \sqrt{2}$', '$\Delta r = 2$', '$\Delta r = \sqrt{5}$', '$\Delta r = 2\sqrt{2}$']
-            plt.legend(leg)
-        elif NG == 5:
-            leg = ['$\Delta r = 1$', '$\Delta r = \sqrt{2}$', '$\Delta r = 2$', '$\Delta r = \sqrt{5}$', '$\Delta r = 2\sqrt{2}$']
-            plt.legend(leg)
-        plt.tight_layout()
-        
-        # plot original G
-        plt.figure()
-        for i in range(NG):
-            plt.plot(tau, Gall[splitData[i]:splitData[i+1]])
-        plt.xscale('log')
-        plt.xlabel('tau (s)')
-        plt.ylabel('G')
-        plt.ylim([np.min(Gall), np.max(Gall)])
-        plt.title('Experimental cross-correlations')
-        if NG == 6:
-            leg = ['$\Delta r = 0$', '$\Delta r = 1$', '$\Delta r = \sqrt{2}$', '$\Delta r = 2$', '$\Delta r = \sqrt{5}$', '$\Delta r = 2\sqrt{2}$']
-            plt.legend(leg)
-        elif NG == 5:
-            leg = ['$\Delta r = 1$', '$\Delta r = \sqrt{2}$', '$\Delta r = 2$', '$\Delta r = \sqrt{5}$', '$\Delta r = 2\sqrt{2}$']
-            plt.legend(leg)
-        plt.tight_layout()
-        
-        # plot original G and fit
-        plt.figure()
-        for i in range(NG):
-            plt.plot(tau, Gall[splitData[i]:splitData[i+1]])
-            plt.plot(tau, Gfitresult[splitData[i]:splitData[i+1]], 'k')
-        plt.xscale('log')
-        plt.xlabel('tau (s)')
-        plt.ylabel('G')
-        plt.ylim([np.min(Gall), np.max(Gall)])
-        if NG == 6:
-            leg = ['$\Delta r = 0$', '$\Delta r = 1$', '$\Delta r = \sqrt{2}$', '$\Delta r = 2$', '$\Delta r = \sqrt{5}$', '$\Delta r = 2\sqrt{2}$']
-            plt.legend(leg)
-        elif NG == 5:
-            leg = ['$\Delta r = 1$', '$\Delta r = \sqrt{2}$', '$\Delta r = 2$', '$\Delta r = \sqrt{5}$', '$\Delta r = 2\sqrt{2}$']
-            plt.legend(leg)
-        plt.tight_layout()
+    fitresult = least_squares(fitfun_dualfocus, fitparam_start, args=(fixed_param, fit_info, global_param, tau, Gexp, weights))
 
     return fitresult
 
@@ -334,6 +275,7 @@ def fitfun_an(fitparamStart, fixedparam, fit_info, tau, yexp, weights=1):
     
     return res
 
+
 def fitfun_an_2c(fitparamStart, fixedparam, fit_info, tau, yexp, weights=1):
     """
     fcs fit anomalous diffusion function
@@ -394,6 +336,7 @@ def fitfun_an_2c(fitparamStart, fixedparam, fit_info, tau, yexp, weights=1):
     res *= weights
     
     return res
+
 
 def fitfun_2c(fitparamStart, fixedparam, fit_info, tau, yexp, weights=1):
     """
@@ -468,7 +411,7 @@ def fitfun_2c(fitparamStart, fixedparam, fit_info, tau, yexp, weights=1):
     return res
 
 
-def fitfun_dualfocus(fitparamStart, fixedparam, fit_info, tau, yexp, splitData, useSingleW=False, weights=1):
+def fitfun_dualfocus(fitparamStart, fixedparam, fit_info, global_param, tau, yexp, weights=1):
     """
     Dual focus fcs fit function
 
@@ -476,7 +419,7 @@ def fitfun_dualfocus(fitparamStart, fixedparam, fit_info, tau, yexp, splitData, 
     ----------
     fitparamStart : 1D np.array
         List with starting values for the fit parameters:
-        order: [c, D, w2 for all, SF for all, rhox for all, rhoy for all, vx, vy, offset for all]
+        order: [c, D (um^2/s), w2 for all (nm), SF for all, rhox for all (nm), rhoy for all (nm), vx (um/s), vy (um/s), offset for all]
         E.g. if only c and D are fitted, this becomes a two
         element vector [1, 1e-3].
     fixedparam : 1D np.array
@@ -493,11 +436,6 @@ def fitfun_dualfocus(fitparamStart, fixedparam, fit_info, tau, yexp, splitData, 
         All curves are concatenated.
     yexp : 1D np.array
         Vector with experimental autocorrelation.
-    splitData : 1D np.array
-        Vector with indices to split data
-        has to start with 0 and end with N (= number of data points)
-        E.g. [0 100 200] will split the data into two traces
-        One from 0 to 99 and one from 100 to 199.
     useSingleW : 1D np.array, optional
         Use the same w0 value for all cross-correlation curves
         If True, "fitparamStart", "fixedparam" and "fit_info"
@@ -513,38 +451,55 @@ def fitfun_dualfocus(fitparamStart, fixedparam, fit_info, tau, yexp, splitData, 
 
     """
     
-    sD = splitData
-    Ntraces = len(sD) - 1
+    # number of parameters (fitted and fixed combined)
+    n_param = len(fit_info)
     
-    fitparam = np.float64(np.zeros(4 + 5*Ntraces))
-    fitparam[fit_info==1] = fitparamStart
-    fitparam[fit_info==0] = fixedparam
+    # number of histogram curves to fit and number of bins in each histogram
+    n_corr, _ = hist_param(yexp)
     
-    N0 = fitparam[0]
-    D = 1e-12*fitparam[1] # m^2/s
-    #tauD0 = 1e-3 * fitparam[1] # ms -> s
-    w = fitparam[2:2+Ntraces]
-    if useSingleW:
-        w = w * 0 + fitparam[2]
+    # if global_param is None, assume none of the parameters is globally fitted
+    if global_param is None:
+        global_param = [False for i in range(n_param)]
     
-    w = 1e-9 * w # m
-    SF = fitparam[2+Ntraces:2+2*Ntraces]
-    rhox = 1e-9*fitparam[2+2*Ntraces:2+3*Ntraces] # m
-    rhoy = 1e-9*fitparam[2+3*Ntraces:2+4*Ntraces] # m
-    vx = 1e-9*fitparam[2+4*Ntraces:3+4*Ntraces] # m/s
-    vy = 1e-9*fitparam[3+4*Ntraces:4+4*Ntraces] # m/s
-    dc = fitparam[4+4*Ntraces:4+5*Ntraces]
+    all_param = make_2D_fit_parameter_array_global_fit(fitparamStart, fixedparam, fit_info, global_param, n_param, n_corr)
     
-    # get particle concentration
-    c = N0 / np.pi**(3/2) / w[0]**3 / SF[0]
-    # calculate N for all curves
-    N = [np.pi**(3/2) * c * w[i]**3 * SF[i] for i in range(Ntraces)]
+    if global_param[0]:
+        # concentration is global fit parameter
+        # --> convert N to concentration for first curve
+        # --> then convert concentration to N for all other curves
+        # These N's may be different if the psf is different
+        N0 = all_param[0, 0]
+        w0 = all_param[2, 0]
+        SF0 = all_param[3, 0]
+        
+        # get particle concentration
+        c = N0 / np.pi**(3/2) / w0**3 / SF0
+        
+        # calculate N for all curves
+        N = np.asarray([np.pi**(3/2) * c * all_param[2, i]**3 * all_param[3, i] for i in range(n_corr)])
+        all_param[0,:] = N
+    
     
     # get diffusion coefficient
     #D = w[0]**2 / 4 / tauD0
     
-    yModel = np.concatenate([fcs_dualfocus(tau[sD[i]:sD[i+1]], N[i], D, w[i], SF[i], rhox[i], rhoy[i], dc[i], vx, vy) for i in range(Ntraces)])
+    yModel = np.concatenate([fcs_dualfocus(tau,
+                                           all_param[0, i], # N
+                                           1e-12*all_param[1, i], # D
+                                           1e-9*all_param[2, i], # w0 (m)
+                                           all_param[3, i], # SP
+                                           1e-9*all_param[4, i], # rho x (m)
+                                           1e-9*all_param[5, i], # rho y (m)
+                                           all_param[8, i], # offset
+                                           1e-6*all_param[6, i], # vx (m/s)
+                                           1e-6*all_param[7, i] # vy (m/s)
+                                           ) for i in range(n_corr)])
 
+    if n_corr > 1:
+        yexp = np.concatenate([yexp[:,i] for i in range(n_corr)])
+        if not np.isscalar(weights):
+            weights = np.concatenate([weights[:,i] for i in range(n_corr)])
+    
     res = yexp - yModel
     
     # calculate weighted residuals
@@ -910,6 +865,62 @@ def plot_fit(tau, yexp, param, fit_info, fitResult, plotInfo="", savefig=0, plot
     plot_pycorrfit(data, plotInfo, savefig, plotTau)
 
 
+def make_fit_info_global_fit(G, list_of_g, lbounds, ubounds, fitarray, startvalues, rho_x, rho_y):
+    # depricated
+    tau = getattr(G, list_of_g[0] + '_averageX')[:,0]
+    n_tau = len(tau)
+    n_traces = len(list_of_g)
+    
+    G_all = np.zeros((n_tau, n_traces))
+    fit_info_all = np.zeros((4 + 5*n_traces, 4)) # fitinfo, startv, minb, maxb
+    
+    for f, corr in enumerate(list_of_g):
+        G_all[:,f] = getattr(G, corr + '_averageX')[:,1]
+        minb = lbounds
+        maxb = ubounds
+        fitarraytemp = fitarray
+        fitstartvtemp = np.concatenate([startvalues[0:4], [rho_x[f]], [rho_y[f]], startvalues[4:7]])
+        
+        for idxp, fitp in enumerate([fitarraytemp, fitstartvtemp, minb, maxb]):
+            fit_info_all[0:2, idxp] = fitp[0:2] # c, D
+            fit_info_all[2+f, idxp] = fitp[2] # w for all
+            fit_info_all[2+n_traces+f, idxp] = fitp[3] # SF for all
+            fit_info_all[2+2*n_traces+f, idxp] = fitp[4] # rhox for all
+            fit_info_all[2+3*n_traces+f, idxp] = fitp[5] # rhoy for all
+            fit_info_all[2+4*n_traces, idxp] = fitp[6] # vx
+            fit_info_all[3+4*n_traces, idxp] = fitp[7] # vy
+            fit_info_all[4+4*n_traces+f, idxp] = fitp[8] # dc for all
+    return G_all, tau, fit_info_all
+
+def read_global_fit_result(fitresult, list_of_g, fitarray, startvalues, rho_x, rho_y):
+    n_traces = len(list_of_g)
+    fitOut = np.zeros((9, n_traces))
+    for f in range(n_traces):
+        fitOut[:,f] = np.concatenate([startvalues[0:4], [rho_x[f]], [rho_y[f]], startvalues[4:7]])
+    j = 0
+    if fitarray[0]:
+        fitOut[0,:] = fitresult.x[j] # c was fitted
+        j += 1
+    if fitarray[1]:
+        fitOut[1,:] = fitresult.x[j] # D was fitted
+        j += 1
+    for p in range(4):
+        if fitarray[p+2]:
+            fitOut[p+2,:] = fitresult.x[j:j+n_traces] # w, SF, rhox, rhoy were fitted
+            j += n_traces
+    if fitarray[6]:
+        fitOut[6,:] = fitresult.x[j] # vx was fitted
+        j += 1
+    if fitarray[7]:
+        fitOut[7,:] = fitresult.x[j] # vy was fitted
+        j += 1
+    if fitarray[8]:
+        fitOut[8,:] = fitresult.x[j:j+n_traces] # dc was fitted
+    # beam waist should be the same for all curves
+    fitOut[2,:] = fitOut[2,0]
+    
+    return np.concatenate([fitOut[0:4,0], fitOut[6:9,0]])
+
 def g2global_fit_struct(G, listOfFields=['spatialCorr'], start=0, N=5):
     """
     Create all variables needed for fcs fit based on correlation object G
@@ -1052,4 +1063,17 @@ def chi_2_fcs_fit(tau, Gexp, fit_info, fitResult):
     dof = len(tau) - np.sum(fit_info) - 1 # degrees of freedom
     chi2 = np.sum((Gexp-Gfit)**2 / np.abs(Gfit)) / dof
     return chi2
+
+
+def stddev_2_weights(std, clipmin=None, clipmax=None):
+    # convert standard deviation to weights = 1/sigma^2
+    # regularize
+    std[std==0] = np.min(std[std!=0])
+    std /= np.min(std)
+    # weights
+    weights = 1/std**2
+    # normalize
+    weights /= np.max(weights)
+    weights = np.clip(weights, clipmin, clipmax)
+    return weights
     

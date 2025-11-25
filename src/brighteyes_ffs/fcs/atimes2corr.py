@@ -1,5 +1,4 @@
 import numpy as np
-from datetime import datetime
 from .extract_spad_photon_streams import extract_spad_photon_streams
 
 
@@ -56,7 +55,7 @@ def atimes_2_corrs(data, list_of_corr, accuracy=50, taumax="auto", perform_coars
             dataExtr = getattr(data, 'det' + str(corr))
             t0 = dataExtr[:, 0]
             corrname = 'det' + str(corr)
-        elif corr == "sum5" or corr == "sum3":
+        else:
             print("Extracting and sorting photons")
             dataExtr = extract_spad_photon_streams(data, corr)
             t0 = dataExtr[:, 0]
@@ -181,15 +180,6 @@ def atimes_2_corr(t0, t1, w0, w1, macroTime, accuracy=50, taumax="auto", perform
     
     # coarse factor
     c = 1
-
-    printDateTime = False
-    if len(t0) > 100000:
-        printDateTime = True
-    
-    # calculate g for each tau value
-    if printDateTime:
-        print(datetime.now())
-    
     
     # tau = np.asarray(tau)
     # tau_diff = tau[1:] - tau[0:-1]
@@ -224,9 +214,6 @@ def atimes_2_corr(t0, t1, w0, w1, macroTime, accuracy=50, taumax="auto", perform
             [t0, w0, ind] = time_coarsening(t0, w0)
             [t1, w1, ind] = time_coarsening(t1, w1)
         
-    if printDateTime:
-        print(datetime.now())
-    
     tau = np.asarray(tau) * macroTime
     
     return np.transpose([tau, g])
@@ -270,13 +257,19 @@ def atimes_2_corr_single(t0, t1, w0, w1, tau, c):
     
     # overlap time
     T = (t0[-1] - tau + 1) * c
+    if T <= 0:
+        return 0
     
     # calculate autocorrelation value
     G = np.sum(w0[idxt0] * w1[idxt1]) / T / c
-    
+   
     # normalize G
     I0 = np.sum(w0[t0 >= tau]) / T
     I1 = np.sum(w1[t1<=t0[-1]]) / T
+    
+    if I0 == 0 or I1 == 0:
+        return 0
+    
     g = G / I0 / I1 - 1
     
     return g

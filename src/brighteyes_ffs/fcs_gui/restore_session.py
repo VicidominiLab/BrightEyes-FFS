@@ -700,18 +700,21 @@ def savelib_ffs(FFSlib, root=0, fname=''):
                                     analysis5.create_dataset(key, data=getattr(c, key))
         
                         # save fits
-                        root.progressMessage = 'Saving fit ' + str(k+1) +  ', FFS file ' + str(j+1) + ', image ' + str(i+1) + '...'
+                        if root != 0:
+                            root.progressMessage = 'Saving fit ' + str(k+1) +  ', FFS file ' + str(j+1) + ', image ' + str(i+1) + '...'
                         fits5 = analysis5.create_group("fits")
                         fits = analysis.fits
                         Nfits = len(fits)
                         
-                        root.progressMessage = 'Saving fits ' + str(k+1) +  ', FFS file ' + str(j+1) + ', image ' + str(i+1) + '...'
+                        if root != 0:
+                            root.progressMessage = 'Saving fits ' + str(k+1) +  ', FFS file ' + str(j+1) + ', image ' + str(i+1) + '...'
                         for l in range(Nfits):
                             fitAllCurves5 = fits5.create_group("fit" + str(l))
                             fitAllCurves = fits[l].fit_all_curves # contains 3 fits: central, sum3, sum5
                             Nfits3 = len(fitAllCurves)
                             for m in range(Nfits3):
-                                root.progressMessage = 'Saving fit--- ' + str(m) +  ', FFS file ' + str(j+1) + ', image ' + str(i+1) + '...'
+                                if root != 0:
+                                    root.progressMessage = 'Saving fit--- ' + str(m) +  ', FFS file ' + str(j+1) + ', image ' + str(i+1) + '...'
                                 fitSingleCurve5 = fitAllCurves5.create_group("fit_single_curve" + str(m))
                                 fitSingleCurve = fitAllCurves[m]
                                 # save all fields

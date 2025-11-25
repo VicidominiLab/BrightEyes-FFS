@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from .atimes_data import atimes_data_2_channels
 
 
 def filter_ap(ks, tau, T, b, norm_exp=False, plot_fig=True):
@@ -125,3 +126,34 @@ def filter_2c(hist1, hist2, b, plot_fig=True):
         plt.plot(F[1,:])
     
     return F
+
+
+def filter_range(data, n_ch=25):
+    """
+    Calculate a reasonable filter range for the ACF.
+
+    Parameters
+    ----------
+    data : correlations object
+        output from load_atimes_data
+        contains also fields histx with x the channel number containing the microtime histograms
+
+    Returns
+    -------
+    None.
+
+    """
+    # find histogram peak and use only limited number of bins after it
+    
+    all_ch = atimes_data_2_channels(data)
+    
+    fit_range = np.zeros((len(all_ch), 2), dtype='int')
+    for i, det in enumerate(all_ch):
+        IhistSingle = getattr(data, "hist" + str(det[3:]))
+        Ihist = IhistSingle[:, 1]
+        idxStart = np.where(Ihist == np.max(Ihist))[0][0] + 1
+        idxStop = np.where(Ihist[idxStart:] == np.min(Ihist[idxStart:]))[0][0] + idxStart + 1
+        idxStop = np.minimum(idxStop, len(Ihist) - 1)
+        fit_range[i, :] = [idxStart, idxStop]
+    data.fit_range = fit_range
+    

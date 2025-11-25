@@ -2,12 +2,12 @@ import numpy as np
 from scipy.special import factorial
 from joblib import Parallel, delayed
 
-def simulate_pch_1c_mc_ntimes(psf, concentration, brightness, n_samples, n_hist_max=10, max_bin=101, err=1e-5):
+def simulate_pch_1c_mc_ntimes(psf, concentration, brightness, n_samples, bg=0, n_hist_max=10, max_bin=101, err=1e-5):
     hist_all = np.zeros((max_bin, n_hist_max))
     continue_simulation = True
     current_simulation = 1
     while continue_simulation:
-        counts, bin_edges = simulate_pch_1c_mc(psf, concentration, brightness, n_samples, max_bin)
+        counts, bin_edges = simulate_pch_1c_mc(psf, concentration, brightness, n_samples, bg, max_bin)
         hist_all[:,current_simulation-1] = counts / n_samples
         if current_simulation > 3:
             hist_av = np.mean(hist_all[:,0:current_simulation], 1)
@@ -21,7 +21,7 @@ def simulate_pch_1c_mc_ntimes(psf, concentration, brightness, n_samples, n_hist_
     return hist_av, bin_edges, hist_std_err, hist_all[:,0:n_simulations], n_simulations
     
     
-def simulate_pch_1c_mc(psf, concentration, brightness, n_samples, max_bin=101):
+def simulate_pch_1c_mc(psf, concentration, brightness, n_samples, bg=0, max_bin=101):
     """
     Simulate photon counting histogram with Monte Carlo, assuming 1 component
 
@@ -47,13 +47,13 @@ def simulate_pch_1c_mc(psf, concentration, brightness, n_samples, max_bin=101):
         1D array with the bin edges.
 
     """
-    list_of_photons = simulate_photon_counts_1c_mc(psf, concentration, brightness, n_samples)
+    list_of_photons = simulate_photon_counts_1c_mc(psf, concentration, brightness, n_samples, bg)
     bins = np.arange(0, max_bin+1, 1)  # center bins on integers
     counts, bin_edges = np.histogram(list_of_photons, bins=bins)
     return counts, bin_edges
 
 
-def simulate_pch_nc_mc(psf, concentration, brightness, n_samples, max_bin=101):
+def simulate_pch_nc_mc(psf, concentration, brightness, n_samples, bg=0, max_bin=101):
     """
     Simulate photon counting histogram with Monte Carlo, assuming 1 component
 
@@ -83,13 +83,13 @@ def simulate_pch_nc_mc(psf, concentration, brightness, n_samples, max_bin=101):
     list_of_photons = np.zeros((n_samples))
     
     for c in range(n_comp):
-        list_of_photons += simulate_photon_counts_1c_mc(psf, concentration[c], brightness[c], n_samples)
+        list_of_photons += simulate_photon_counts_1c_mc(psf, concentration[c], brightness[c], n_samples, bg)
     bins = np.arange(0, max_bin+1, 1)  # center bins on integers
     counts, bin_edges = np.histogram(list_of_photons, bins=bins)
     return counts, bin_edges
     
 
-def simulate_photon_counts_1c_mc(psf, concentration, brightness, n_samples, n_jobs=-1):
+def simulate_photon_counts_1c_mc(psf, concentration, brightness, n_samples, bg=0, n_jobs=-1):
     """
     Simulate photon counts with a MC approach, assuming 1 component
 
@@ -124,6 +124,10 @@ def simulate_photon_counts_1c_mc(psf, concentration, brightness, n_samples, n_jo
         # Add shot noise (Poisson distributed photon counts)
         emitted_photons = np.random.poisson(expected_photons)
         detected_photons = np.sum(emitted_photons)
+        
+        # Add dark counts
+        detected_photons += np.random.poisson(bg)
+        
         return detected_photons
 
     # Run in parallel
@@ -134,7 +138,7 @@ def simulate_photon_counts_1c_mc(psf, concentration, brightness, n_samples, n_jo
     return np.array(det_photons)
 
 
-def simulate_pch_1c(psf, dV=1, k_max=30, c=1, q=1, T=1, dV0=1):
+def simulate_pch_1c(psf, dV=1, k_max=30, c=1, q=1, T=1, dV0=1, n_draws=1):
     """
     Recover the photon counting histogram P(k) from the generating function G(xi)
     Assume 1 component
@@ -170,7 +174,9 @@ def simulate_pch_1c(psf, dV=1, k_max=30, c=1, q=1, T=1, dV0=1):
     
     for idx in range(int(k_max)):
         G[idx] = dV0 * np.sum(dV * (np.exp(xi_minus1[idx] * int_B) - 1))
-        
+    
+    G *= n_draws
+    
     G = np.exp(c * G)
     
     pch = np.abs(np.fft.ifft(G))
@@ -179,7 +185,7 @@ def simulate_pch_1c(psf, dV=1, k_max=30, c=1, q=1, T=1, dV0=1):
     return pch
 
 
-def simulate_pch_nc(psf, dV=1, k_max=30, c=[1], q=[1], T=1, dV0=1, b=0):
+def simulate_pch_nc(psf, dV=1, k_max=30, c=[1], q=[1], T=1, dV0=1, bg=0, n_draws=1):
     """
     Recover the photon counting histogram P(k) from the generating function G(xi)
     Assume n components
@@ -193,11 +199,13 @@ def simulate_pch_nc(psf, dV=1, k_max=30, c=[1], q=[1], T=1, dV0=1, b=0):
     c : list, optional
         List of emitter concentration for all components. The default is [1].
     q : list, optional
-        List of brighness for all components. The default is [1].
+        List of brightness for all components. The default is [1].
     T : float, optional
         Bin time. The default is 1.
-    dV : float, optional
+    dV0 : float, optional
         Voxel volume. The default is 1.
+    n_draws : int, optional
+        Number of times you draw from the PCH distribution and sum the counts
 
     Returns
     -------
@@ -206,26 +214,30 @@ def simulate_pch_nc(psf, dV=1, k_max=30, c=[1], q=[1], T=1, dV0=1, b=0):
 
     """
     n_comp = len(c)
+    k_max_temp = 1 << ((int(k_max) - 1).bit_length())
     
-    log_G_tot = np.zeros(k_max, dtype=complex)
-    k_array = np.linspace(0, k_max-1, k_max)
-    phi = 2 * np.pi * k_array / k_max
+    log_G_tot = np.zeros(k_max_temp, dtype=complex)
+    k_array = np.linspace(0, k_max_temp-1, k_max_temp)
+    phi = 2 * np.pi * k_array / k_max_temp
     xi_minus1 = np.exp(-1j * phi) - 1
     
     # all components
     for i in range(n_comp):
-        G_single_comp = np.zeros(k_max, dtype=complex)
+        G_single_comp = np.zeros(k_max_temp, dtype=complex)
         int_B = q[i] * psf * T
         
-        for idx in range(int(k_max)):
+        for idx in range(int(k_max_temp)):
             G_single_comp[idx] = dV0 * np.sum(dV * (np.exp(xi_minus1[idx] * int_B) - 1))
         
         log_G_tot += c[i] * G_single_comp
     
+    
+    log_G_tot *= n_draws
+    
     # background
-    b *= T # convert dark counts rate to absolute counts in time T
-    bg = np.asarray([b**k*np.exp(-b)/factorial(k) for k in range(k_max)])
-    bg_fft = np.fft.fft(bg)
+    bg *= T * n_draws # convert dark counts rate to absolute counts in time T * n_draws
+    bg_hist = np.asarray([bg**k*np.exp(-bg)/factorial(k) for k in range(k_max_temp)])
+    bg_fft = np.fft.fft(bg_hist)
     log_bg_G = np.log(bg_fft)
     
     log_G_tot += log_bg_G
@@ -234,5 +246,6 @@ def simulate_pch_nc(psf, dV=1, k_max=30, c=[1], q=[1], T=1, dV0=1, b=0):
     
     pch = np.abs(np.fft.ifft(G))
     pch /= np.sum(pch)
+    pch = pch[0:k_max]
     
     return pch

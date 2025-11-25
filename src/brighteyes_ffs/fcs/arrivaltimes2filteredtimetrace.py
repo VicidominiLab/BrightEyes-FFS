@@ -77,7 +77,7 @@ def arrival_times_2_filtered_time_trace(data, filter_function, microbin_length, 
     return np.squeeze(timeTraces)
 
 
-def atimes_filtered(data, filter_function, micro_bin=False):
+def atimes_filtered(data, filter_function, micro_bin=False, verbose=False):
     """
     Filter a list of arrivalTimes
 
@@ -109,10 +109,10 @@ def atimes_filtered(data, filter_function, micro_bin=False):
 
     Returns
     -------
-    data : object
-        Same object as input but data.det0 is now np.array(N x 2+Nf)
-            For every detector element, Nf columns are added with 
-            the filtered weights for the arrival times.
+    Data object is modified in-place. Nothing is returned.
+    but data.det0 is now np.array(N x 2+Nf)
+        For every detector element, Nf columns are added with 
+        the filtered weights for the arrival times.
 
     """
     
@@ -138,7 +138,8 @@ def atimes_filtered(data, filter_function, micro_bin=False):
     
     # go through each channel and create filtered intensity trace
     for det in range(Ndet):
-        print("Calculating filtered photon streams " + listOfFields[det])
+        if verbose:
+            print("Calculating filtered photon streams " + listOfFields[det])
         # get photon streams single detector element
         dataSingleDet = getattr(data, listOfFields[det])
         # remove exessive columns which may already contain filtered photon streams
@@ -150,5 +151,3 @@ def atimes_filtered(data, filter_function, micro_bin=False):
             filteredValues = np.expand_dims(np.take(np.squeeze(filter_function[det, :, filt]), photonMicroBins), 1)
             dataSingleDet = np.concatenate((dataSingleDet, filteredValues), axis=1)
         setattr(data, listOfFields[det], dataSingleDet)
-
-    return data

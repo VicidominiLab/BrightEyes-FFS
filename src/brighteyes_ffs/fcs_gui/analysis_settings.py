@@ -370,6 +370,8 @@ class FFScorr:
         
         self.settings.resolution = resolution
         self.settings.algorithm = algorithm
+        if self.settings.list_of_g[0] == "crossAll" and self.settings.algorithm != 'tt2corr':
+            self.settings.algorithm = 'sparse_matrices'
         self.settings.chunksize = chunksize # s
         self.settings.chunks_off = chunks_off
         if active_fit == -1:
@@ -431,6 +433,7 @@ class FFScorr:
             Gsingle = self.get_corr('V0_H0')
         except:
             return None, None
+        not_found = 0
         tau = Gsingle[:,0]
         G3d = np.zeros((len(tau), N, N))
         for i in range(N):
@@ -439,7 +442,9 @@ class FFScorr:
                     G = self.get_corr('V' + str(j-N//2) + '_H' + str(i-N//2))
                     G3d[:, j, i] = G[:,1]
                 except:
-                    return None, None
+                    not_found += 1
+        if not_found > N*N-25:
+            return None, None
         return G3d, tau
     
     def analysis_summary(self):
@@ -527,7 +532,6 @@ class CorrSettings():
             idx = np.nonzero(chunks_off)
             idx = list(idx[0]) # list of indices of good chunks
             try:
-                print(chunks_off)
                 G = fcs_av_chunks(G, idx)
                 try:
                     G = fcs_crosscenter_av(G, returnField='_averageX')
@@ -680,30 +684,35 @@ class CorrFit():
         
         N = int(len(fit.fitresult))
         
-        dets = ['square', 'airy']
+        dets = ['square', 'square', 'airy', 'airy6']
         columnorder_square = ['Right', 'Up', 'Left', 'Down'] # square array detector
+        columnorder_square_v2 = ['V0_H1', 'V-1_H0', 'V0_H-1', 'V1_H0'] # square array detector
         columnorder_airy = ['UpRight', 'UpLeft', 'DownLeft', 'DownRight'] # airy detector
+        columnorder_airy6 = ['Angle0', 'Angle60', 'Angle120', 'Angle180', 'Angle240', 'Angle300'] # airy detector
         
-        for det, columnorder in enumerate([columnorder_square, columnorder_airy]):
+        columns_found = False
+        for det, columnorder in enumerate([columnorder_square, columnorder_square_v2, columnorder_airy, columnorder_airy6]):
             allfits = np.zeros((N, len(columnorder)))
-            columnNotFound = False
+            columns_found = 0
             for i in range(num_curves):
                 try:
                     c = columnorder.index(self.fit_all_curves[i].data)
                     allfits[:, c] = self.fit_all_curves[i].fitresult
+                    columns_found += 1
                 except:
-                    columnNotFound = True
-            if not columnNotFound:
+                    pass
+            if columns_found == len(columnorder):
+                columns_found = True
                 break
         
-        if columnNotFound:
-            return np.zeros((5,5)), [0,0], columnNotFound
+        if not columns_found:
+            return np.zeros((5,5)), [0,0], not columns_found
         
         z, flow = g2flow(allfits, detector=dets[det])
         u = 2*flow[0]
         r = 2*flow[1]
     
-        return z, [r, u], columnNotFound
+        return z, [r, u], not columns_found
     
     def fitresults_mem(self, tau, nparam=5):
         # return diffusion times distributions for MEM fit

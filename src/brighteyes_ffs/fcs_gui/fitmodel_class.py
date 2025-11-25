@@ -43,6 +43,10 @@ class FitModel:
         self.param_maxbound           = params.get("paramMaxbound")
         self.fitfunction_name         = params.get("fitfunctionName")
         self.fitfunction_param_used   = params.get("fitfunctionParamUsed")
+        try:
+            self.global_param         = params.get("globalParam")
+        except:
+            self.global_param = None
             
     
     def returnfitparam(self):

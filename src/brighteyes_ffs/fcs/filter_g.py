@@ -1,6 +1,35 @@
 import numpy as np
 
-def filter_g_obj(G, filt='sum5', f_acc=0.66):
+
+def good_chunks_from_g_obj(G, filt='sum5', f_acc=0.66):
+    """
+    Check for bad chunks in autocorrelations object
+
+    Parameters
+    ----------
+    G : Correlations object
+        Object with fields for correlation curves, e.g. G.sum5_chunk0.
+    filt : str, optional
+        Choose which correlation type to use for filtering. The default is 'sum5'.
+    f_acc : float, optional
+        Acceptance ratio. The default is 0.66, meaning that the 1/3 worst
+        correlation curves are rejected. Quality is defined as how close to the
+        mean a curve is
+
+    Returns
+    -------
+    idx : list
+        List with the indices of the good chunks
+
+    """
+    # make boolean list with True for good chunks, False for bad chunks
+    chunks_on = check_chunks_from_g_obj(G, filt, f_acc)
+    # return index of good chunks
+    idx = list(np.nonzero(chunks_on)[0])
+    return idx
+
+
+def check_chunks_from_g_obj(G, filt='sum5', f_acc=0.66):
     """
     Check for bad chunks in autocorrelations
 
@@ -11,7 +40,7 @@ def filter_g_obj(G, filt='sum5', f_acc=0.66):
     filt : str, optional
         Choose which correlation type to use for filtering. The default is 'sum5'.
     f_acc : float, optional
-        Acceptance ration. The default is 0.66, meaning that the 1/3 worst
+        Acceptance ratio. The default is 0.66, meaning that the 1/3 worst
         correlation curves are rejected.
 
     Returns
@@ -25,33 +54,20 @@ def filter_g_obj(G, filt='sum5', f_acc=0.66):
     if indsorted is None:
         return None
     n_chunks = len(indsorted)
-    chunks_on = np.zeros((n_chunks))
+    chunks_on = np.zeros((n_chunks), dtype=int)
     indsorted = indsorted[0:int(np.round(f_acc*n_chunks))]
     chunks_on[indsorted] = 1
     return chunks_on
     
 
 def sort_g_obj(G, filt):
-    keylist = list(G.__dict__.keys())
-    good_keys = []
-    for ind, key in enumerate(keylist):
-        if key.startswith(filt + '_chunk'):
-            good_keys.append(key)
-    
-    if len(good_keys) == 0:
-        return None, None, None
-    
-    g_shape = np.shape(getattr(G, good_keys[0]))
-    Garray = np.zeros((g_shape[0],len(good_keys)))
-    for i in range(len(good_keys)):
-        Garray[:,i] = getattr(G, filt + '_chunk' + str(i))[:,1]
-    
-    [indsorted, Gsorted, dGmArray] = automatic_suppression_g(Garray)
+    Garray, tau = G.get_corrs(filt)
+    [indsorted, Gsorted, dGmArray] = sort_g_array(Garray)
     
     return indsorted, Gsorted, dGmArray
     
 
-def automatic_suppression_g(G):
+def sort_g_array(G, optimize=True):
     """
     Automated suppression of artifacts in FCS data
     based on the article by Ries et al., Opt. Express, 2010.
@@ -73,7 +89,7 @@ def automatic_suppression_g(G):
     
     Gsize = G.shape
     n = Gsize[1]  # number of autocorrelation curves
-    ind = np.arange(n)  # keeps track of the indices of the images
+    ind = np.arange(n)  # keeps track of the indices of the curves
     indsorted = np.zeros(n, dtype=int)
     Gsorted = np.zeros(Gsize)
     dGmArray = np.zeros(n)
@@ -82,10 +98,37 @@ def automatic_suppression_g(G):
         Gsorted = G
         return indsorted, Gsorted, dGmArray
     
+    if optimize:
+        while n > 250:
+            # Global mean over all curves (no exclusion)
+            g_mean = np.mean(G, axis=1)
+            # Compute deviations of each curve vs global mean, ignoring lag 0 as in original
+            diffs = G[1:, :] - g_mean[1:, None]
+            dG = np.mean(diffs**2, axis=0)
+            
+            # Sort curves from best (smallest deviation) to worst (largest)
+            m_all = np.argsort(dG)
+            n_disc = 1 #max(1, int(0.001 * n))
+            # indices of the curves that need to be removed
+            m = m_all[-n_disc:]
+           
+            Gsorted[:,n-n_disc:n] = G[:, m]
+            indsorted[n-n_disc:n] = ind[m]
+            dGmArray[n-n_disc:n] = dG[n-n_disc:n]
+            
+            # Remove the worst autocorrelation function
+            G = np.delete(G, m, axis=1)
+            ind = np.delete(ind, m)
+            
+            n -= n_disc
+    
     for step in range(n-1, 0, -1):
         dG = np.zeros(step)
         
         # Calculate deviation for each curve
+        g_mean = np.sum(G, 1)
+        g_mean = np.tile(g_mean[:, None], 5)
+        
         for k in range(step):
             g_mean = np.mean(np.delete(G, k, axis=1), axis=1)
             dG[k] = np.mean((G[1:, k] - g_mean[1:]) ** 2)

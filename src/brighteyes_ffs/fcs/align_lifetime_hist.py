@@ -18,8 +18,7 @@ def align_hist(data, n=15):
 
     Returns
     -------
-    data : object
-        same data object as input, but with histograms aligned in time.
+    Object is changed in-place. Nothing is returned
 
     """
     
@@ -45,5 +44,3 @@ def align_hist(data, n=15):
         hshifts[i] = maxInd
         i += 1
     setattr(data, 'hshifts', hshifts)
-    
-    return data

@@ -63,12 +63,13 @@ def g2polar(g, Nr=180):
 
 def g2flow(g, Nr=180, detector='square'):
     """
-    Function that converts x-correlations into a polar plot to indicate flow
+    Function that converts x-correlations into a polar plot to indicate
+    diffusion anisotropy such as flow
     
     Parameters
     ----------
     g : np.array()
-        Array with 4 rows, each one the G values for right, up, left, down
+        Array with 4 columns, each one the G values for right, up, left, down
         cross-correlations (only y values).
     Nr : int, optional
         Number of pixels in the polar plot. The default is 180.
@@ -80,7 +81,7 @@ def g2flow(g, Nr=180, detector='square'):
     z : np.array()
         2D array with the flow plot.
     flow : list
-        List with 2 values indicating the flow in tge [up, right] direction.
+        List with 2 values indicating the flow in the [up, right] direction.
 
     """
     
@@ -96,25 +97,45 @@ def g2flow(g, Nr=180, detector='square'):
     theta += 2*np.pi
     theta = theta % (np.pi)
     theta[yy < 0] += np.pi
-    
     z = rr*0
     
-    G_diff = np.zeros((len(g[:, 0]), 2))
-    G_diff[:, 0] = (g[:,1] - g[:,3]) / np.mean(g)
-    G_diff[:, 1] = (g[:,0] - g[:,2]) / np.mean(g)
-    cmax = len(G_diff[:,0]) - 1
+    if detector == 'airy6':
+        G_diff = np.zeros((len(g[:, 0]), 6))
+        G_diff[:, 0] = (g[:,1] - g[:,4]) / np.mean(g) # top right
+        G_diff[:, 1] = (g[:,0] - g[:,3]) / np.mean(g) # top
+        G_diff[:, 2] = (g[:,5] - g[:,2]) / np.mean(g) # top left
+        G_diff[:, 3] = -G_diff[:, 0] # bottom left
+        G_diff[:, 4] = -G_diff[:, 1] # bottom
+        G_diff[:, 5] = -G_diff[:, 2] # bottom right
+        cmax = len(G_diff[:,0]) - 1
+        
+        for x in range(Nr):
+            for y in range(Nr):
+                r = np.clip(rr[y, x], 0, 1)
+                th = np.clip(int(theta[y, x] // (np.pi/3)), 0, 5)
+                color = G_diff[np.clip(int(r*len(G_diff)), 0, cmax), th]
+                z[y, x] = color
+        Gsum = np.sum(G_diff, 0)
+        flow = [Gsum[1]+Gsum[0]*0.5-Gsum[5]*0.5, Gsum[0]*0.87+Gsum[5]*0.87] # -Gsum[0]*0.71-Gsum[1]*0.71
+        flow = [0.3*i for i in flow]
+    else:
+        G_diff = np.zeros((len(g[:, 0]), 2))
+        G_diff[:, 0] = (g[:,1] - g[:,3]) / np.mean(g)
+        G_diff[:, 1] = (g[:,0] - g[:,2]) / np.mean(g)
+        cmax = len(G_diff[:,0]) - 1
     
-    for x in range(Nr):
-        for y in range(Nr):
-            r = np.clip(rr[y, x], 0, 1)
-            th = theta[y, x]
-            color = G_diff[np.clip(int(r*len(G_diff[:,1])), 0, cmax), 1]*np.cos(th)
-            color += G_diff[np.clip(int(r*len(G_diff[:,0])), 0, cmax), 0]*np.sin(th)
-            z[y, x] = color
+        for x in range(Nr):
+            for y in range(Nr):
+                r = np.clip(rr[y, x], 0, 1)
+                th = theta[y, x]
+                color = G_diff[np.clip(int(r*len(G_diff[:,1])), 0, cmax), 1]*np.cos(th)
+                color += G_diff[np.clip(int(r*len(G_diff[:,0])), 0, cmax), 0]*np.sin(th)
+                z[y, x] = color
     
+        flow = np.sum(G_diff, 0)
     #z = gaussian_filter(z, sigma=sigma)
     z[rr > 1] = None
-    flow = np.sum(G_diff, 0)
+    
     return z, flow
 
 
