@@ -1,6 +1,7 @@
 from pathlib import Path
 from os import path as pth
 from ..tools.h5data import h5data
+from .atimes_data import atimes_data_2_duration, load_atimes_data
 from tifffile import TiffFile
 import czifile
 import h5py
@@ -129,7 +130,12 @@ def get_file_info(fname, parameter=['all']):
         finfo = get_file_info_tiff(fname)
         return finfo
     elif fname_ext == '.czi':
+        # read from czi file
         finfo = get_file_info_czi(fname)
+        return finfo
+    elif fname_ext == '.ptu':
+        # read from ptu file
+        finfo = get_file_info_ptu(fname)
         return finfo
     
 def get_file_info_txt(fname, parameter=['all']):
@@ -289,6 +295,41 @@ def get_file_info_h5(fname):
     return output
 
 
+def get_file_info_ptu(fname):
+    """
+    Get metadata from ptu file (under development)
+    
+    Parameters
+    ----------
+    fname : string
+        File name [*.ptu].
+
+    Returns
+    -------
+    output : object
+        An object will all information
+
+    """
+    output = infoObj()
+    raw_data = load_atimes_data(fname, channels='auto', perform_calib=False)
+    raw_data.macrotime = 1e-12
+    raw_data.microtime = 1e-12
+    output.duration = atimes_data_2_duration(raw_data, macrotime=raw_data.macrotime, subtract_start_time=False)
+    output.numberOfTbinsPerPixel = 1
+    output.numberOfPixels = 1
+    output.numberOfLines = 1
+    output.numberOfFrames = 1
+    output.rangeX = 0
+    output.rangeY = 0
+    output.rangeZ = 0
+    output.numberOfDataPoints = 0
+    output.timeResolution = 1e-6 # us
+    output.dwellTime = 1e-12 # s
+    output.pxsize = 0
+    
+    return output
+
+
 def get_file_info_czi(fname):
     """
     Get metadata from czi file (under development)
@@ -300,9 +341,8 @@ def get_file_info_czi(fname):
 
     Returns
     -------
-    output : object or number
+    output : object
         An object will all information
-        Or the requested parameter.
 
     """
     
@@ -321,9 +361,12 @@ def get_file_info_czi(fname):
     if output.timeResolution is None:
         output.timeResolution = 1
     
-    output.dwellTime = 1e-6 * get_file_info_txt(fname[:-4] + '.txt', parameter="DWELL TIME [us]") # s
+    output.dwellTime = get_file_info_txt(fname[:-4] + '.txt', parameter="DWELL TIME [us]") # us
     if output.dwellTime is None:
-        output.timeResolution * 1e-6 # s
+        output.dwellTime = 1.2e-6 # s
+        output.timeResolution = 1.2 # us
+    else:
+        output.dwellTime *= 1e-6 # s
    
     output.duration = output.dwellTime * dims_shape[4]*dims_shape[7] # s
     

@@ -80,7 +80,7 @@ def mem_fit(fitparam, tau, yexp, fitfun=fcs_analytical, weights=1, startdistr='d
     fin_fit = np.zeros((n_tauD, n_tau))
     
     if multiprocess:
-        Processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1)(delayed(fitfun)(tau, 1, tauD[i], shape_param, 0, A=0, B=0, alpha=anomD) for i in list(range(n_tauD)))
+        Processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1, prefer="threads")(delayed(fitfun)(tau, 1, tauD[i], shape_param, 0, A=0, B=0, alpha=anomD) for i in list(range(n_tauD)))
         for i in range(n_tauD):
             fin_fit[i,:] = Processed_list[i] #fitfun(tau, 1, tauD[i], 3, 0, A=0, B=0, alpha=anomD)
     else:

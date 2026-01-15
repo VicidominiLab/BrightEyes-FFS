@@ -48,8 +48,8 @@ def get_corr_input(corrtype, det):
     corrtype = corrtype.lower()
     det = det.lower()
     
-    det_GI5 = ['square 5x5', 'nsparc']
-    det_PDA23 = ['pda-23', 'luminosa']
+    det_GI5 = ['square 5x5', 'nsparc', '5x5']
+    det_PDA23 = ['pda-23', 'luminosa', 'pda23']
     det_Airyscan = ['airyscan', 'airyscan 32']
     
     # -------------------- All autocorrelations --------------------
@@ -170,10 +170,17 @@ def get_corr_input(corrtype, det):
             return list_of_g, list_of_g_out, averaging
         
         if det in det_Airyscan:
-            list_of_g_out = ['Angle0', 'Angle60', 'Angle120', 'Angle180', 'Angle240', 'Angle300']
+            list_of_g_out = []
+            for angle in [0, 60, 120, 180, 240, 300]:
+                for dist in [1, 2]:
+                    list_of_g_out.append('Angle' + str(angle) + '_' + str(dist))
             list_of_g = ['crossAll']
-            averaging = ['0x18+3x6+12x0+2x7+11x1+10x8+4x17+13x5+14x16', '0x16+2x5+10x0+1x17+9x6+8x18+3x15+11x4+12x14', '0x14+1x4+8x0+2x13+9x3+10x12+6x15+7x5+18x16',
-                   '0x12+6x3+18x0+17x4+5x13+16x14+7x2+1x11+8x10', '0x10+5x2+16x0+6x9+17x1+18x8+15x3+4x11+14x12', '0x8+4x1+14x0+3x9+13x2+12x10+5x7+15x6+16x18']
+            averaging = ['10x9+9x8+11x2+2x1+1x7+12x3+3x0+0x6+6x18+13x4+4x5+5x17+14x15+15x16', '0x18+3x6+12x0+2x7+11x1+10x8+4x17+13x5+14x16',
+                         '8x7+7x18+9x1+1x6+6x17+10x2+2x0+0x5+5x16+11x3+3x4+4x15+12x13+13x14', '0x16+2x5+10x0+1x17+9x6+8x18+3x15+11x4+12x14',
+                         '10x11+11x12+9x2+2x3+3x13+8x1+1x0+0x4+4x14+7x6+6x5+5x15+18x17+17x16', '0x14+1x4+8x0+2x13+9x3+10x12+6x15+7x5+18x16',
+                         '8x9+9x10+7x1+1x2+2x11+18x6+6x0+0x3+3x12+17x5+5x4+4x13+16x15+15x14', '0x12+6x3+18x0+17x4+5x13+16x14+7x2+1x11+8x10',
+                         '18x7+7x8+17x6+6x1+1x9+16x5+5x0+0x2+2x10+15x4+4x3+3x11+14x13+13x12', '0x10+5x2+16x0+6x9+17x1+18x8+15x3+4x11+14x12',
+                         '12x11+11x10+13x3+3x2+2x9+14x4+4x0+0x1+1x8+15x5+5x6+6x7+16x17+17x18', '0x8+4x1+14x0+3x9+13x2+12x10+5x7+15x6+16x18']
             return list_of_g, list_of_g_out, averaging
         
         

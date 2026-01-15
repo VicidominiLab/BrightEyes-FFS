@@ -85,7 +85,7 @@ def fcs_fit(Gexp, tau, fitfun, fit_info, param, lBounds, uBounds, plotInfo, save
         elif fitfun == mem_fit_free_diffusion:
             fitresult = mem_fit_free_diffusion(param, tau, Gexp, weights)
         elif fitfun == fcs_fit_dualfocus:
-            fitresult = fcs_fit_dualfocus(Gexp, tau, fit_info, param, weights=weights, global_param=global_param)
+            fitresult = fcs_fit_dualfocus(Gexp, tau, fit_info, param, weights=weights, global_param=global_param, lBounds=lBounds, uBounds=uBounds)
         else:
             fitresult = least_squares(fitfun, fitparamStart, args=(fixedparam, fit_info, tau, Gexp, weights), bounds=(lowerBounds, upperBounds))
 
@@ -99,8 +99,9 @@ def fcs_fit(Gexp, tau, fitfun, fit_info, param, lBounds, uBounds, plotInfo, save
         # only one curve fitted
         if fitfun != 'mem_fit_free_diffusion' and fitfun != mem_fit_free_diffusion:
             fitresult.fun /= weights
-            param[fit_info==1] = fitresult.x
-            fitresult.x = param
+            param_out = param.copy()
+            param_out[fit_info==1] = fitresult.x
+            fitresult.x = param_out
     
     if plotInfo != -1:
         plot_fit(tau, Gexp, param, fit_info, fitresult, plotInfo, savefig, plotTau)
@@ -108,7 +109,7 @@ def fcs_fit(Gexp, tau, fitfun, fit_info, param, lBounds, uBounds, plotInfo, save
     return fitresult
 
 
-def fcs_fit_dualfocus(Gexp, tau, fit_info, param, weights=1, global_param=None):
+def fcs_fit_dualfocus(Gexp, tau, fit_info, param, weights=1, global_param=None, lBounds=None, uBounds=None):
     """
     Fit experimental fcs data to the analytical model
     Assuming 3D diffusion in a Gaussian focal volume
@@ -150,15 +151,24 @@ def fcs_fit_dualfocus(Gexp, tau, fit_info, param, weights=1, global_param=None):
     if global_param is None:
         global_param = [False for i in range(n_param)]
     
-    dummy_bounds = [0 for i in range(len(fit_info))]
+    if lBounds is None:
+        lBounds = np.asarray([0 for i in range(len(fit_info))])
+    else:
+        lBounds = lBounds.copy()
+    if uBounds is None:
+        uBounds = np.asarray([0 for i in range(len(fit_info))])
+    else:
+        uBounds = uBounds.copy()
     
     if n_corr > 1:
-        fitparam_start, fixed_param, _, _ = make_fit_parameters_global_fit(param, fit_info, n_corr, global_param, dummy_bounds, dummy_bounds)
+        fitparam_start, fixed_param, lBounds, uBounds = make_fit_parameters_global_fit(param, fit_info, n_corr, global_param, lBounds, uBounds)
     else:
         fitparam_start = param[fit_info==1]
+        lBounds = lBounds[fit_info==1]
+        uBounds = uBounds[fit_info==1]
         fixed_param = param[fit_info==0]
     
-    fitresult = least_squares(fitfun_dualfocus, fitparam_start, args=(fixed_param, fit_info, global_param, tau, Gexp, weights))
+    fitresult = least_squares(fitfun_dualfocus, fitparam_start, args=(fixed_param, fit_info, global_param, tau, Gexp, weights), bounds=(lBounds, uBounds))
 
     return fitresult
 
@@ -1065,7 +1075,7 @@ def chi_2_fcs_fit(tau, Gexp, fit_info, fitResult):
     return chi2
 
 
-def stddev_2_weights(std, clipmin=None, clipmax=None):
+def stddev_2_weights(std, clipmin=None, clipmax=1):
     # convert standard deviation to weights = 1/sigma^2
     # regularize
     std[std==0] = np.min(std[std!=0])

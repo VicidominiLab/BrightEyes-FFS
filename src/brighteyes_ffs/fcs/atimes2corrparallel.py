@@ -8,7 +8,7 @@ import numpy as np
 from .extract_spad_photon_streams import extract_spad_photon_streams
 
 
-def atimes_file_2_corr(fname, list_of_g=['central', 'sum3', 'sum5'], accuracy=16, split=10, time_trace=False, root=0, list_of_g_out=None, averaging=None):
+def atimes_file_2_corr(fname, list_of_g=['central', 'sum3', 'sum5'], accuracy=16, split=10, time_trace=False, root=0, list_of_g_out=None, averaging=None, parallel_prefer=None, min_step=10):
     """
     Calculate correlations between several photon streams with arrival times
     stored in an h5 or ptu TCSPC file
@@ -36,6 +36,11 @@ def atimes_file_2_corr(fname, list_of_g=['central', 'sum3', 'sum5'], accuracy=16
         If true, return also the time trace
     list_of_g_out : list of strings, optional
         Names of the correlation curves. The default is None.
+    min_step : int, optional
+        Minimum correlation lag time calculated as a power of 2
+        E.g. if arrival times are in ps, then min_step = 10 means
+        min lag time = 2**10 ps = 1024 ps
+        Used to speed up calculation
 
     Returns
     -------
@@ -55,21 +60,18 @@ def atimes_file_2_corr(fname, list_of_g=['central', 'sum3', 'sum5'], accuracy=16
     
     maxseg = 1000
     
-    all_ch = atimes_data_2_channels(raw_data) # list of all channels
-    max_ch = atimes_data_attr_2_ch(all_ch[-1]) # number of last channel, e.g. 31
-    
-    data = np.zeros((maxseg, max_ch+1))
+    all_ch = atimes_data_2_channels(raw_data) # list of all channels, sorted
+    data = np.zeros((maxseg, len(all_ch)))
     duration = atimes_data_2_duration(raw_data, macrotime=raw_data.macrotime, subtract_start_time=False) # s
     time_bins = np.linspace(0, duration, maxseg + 1)
     
-    for det in all_ch:
+    for idet, det in enumerate(all_ch):
         time = getattr(raw_data, det)[:,0]
         timeAbs = time * raw_data.macrotime
         [Itrace, timeBins] = np.histogram(timeAbs, time_bins)
-        idx = atimes_data_attr_2_ch(det)
-        data[:, idx] = Itrace[0:] #/ (timeBins[2] - timeBins[1]) / 1e3
+        data[:, idet] = Itrace[0:] #/ (timeBins[2] - timeBins[1]) / 1e3
     
-    G = atimes_2_corrs_parallel(raw_data, list_of_g, accuracy=accuracy, taumax="auto", perform_coarsening=True, logtau=True, root=root, split=split, averaging=averaging, list_of_g_out=list_of_g_out)
+    G = atimes_2_corrs_parallel(raw_data, list_of_g, accuracy=accuracy, taumax="auto", perform_coarsening=True, logtau=True, root=root, split=split, averaging=averaging, list_of_g_out=list_of_g_out, parallel_prefer=parallel_prefer, min_step=min_step)
     G.dwellTime = 1e-12 # timeBins[2] - timeBins[1]
     
     if time_trace:
@@ -79,7 +81,7 @@ def atimes_file_2_corr(fname, list_of_g=['central', 'sum3', 'sum5'], accuracy=16
     
 
 
-def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0, averaging=None, perform_coarsening=True, logtau=True, split=10, list_of_g_out=None):
+def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0, averaging=None, perform_coarsening=True, logtau=True, split=10, list_of_g_out=None, parallel_prefer=None, min_step=10):
     """
     Calculate correlations between several photon streams with arrival times
     stored in macrotimes, using parallel computing to speed up the process
@@ -168,20 +170,21 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
         # go over all filters
         num_filters = np.shape(dataExtr)[1] - 1
         for j in range(num_filters):
-            print("   Filter " + str(j))
+            if j > 0:
+                print("   Filter " + str(j))
             if crossCorr == False:
                 if j == 0:
-                    Processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1)(delayed(parallel_g)(t0, [1], data_macrotime, j, split, accuracy, taumax, perform_coarsening, logtau, chunk) for chunk in list(range(n_chunks)))
+                    Processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1, prefer=parallel_prefer)(delayed(parallel_g)(t0, [1], data_macrotime, j, split, accuracy, taumax, perform_coarsening, logtau, min_step, chunk) for chunk in list(range(n_chunks)))
                 else:
                     w0 = dataExtr[:, j+1]
-                    Processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1)(delayed(parallel_g)(t0, w0, data_macrotime, j, split, accuracy, taumax, perform_coarsening, logtau, chunk) for chunk in list(range(n_chunks)))
+                    Processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1, prefer=parallel_prefer)(delayed(parallel_g)(t0, w0, data_macrotime, j, split, accuracy, taumax, perform_coarsening, logtau, min_step, chunk) for chunk in list(range(n_chunks)))
             else:
                 if j == 0:
-                    Processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1)(delayed(parallel_gx)(t0, [1], t1, [1], data_macrotime, j, split, accuracy, taumax, perform_coarsening, logtau, chunk) for chunk in list(range(n_chunks)))
+                    Processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1, prefer=parallel_prefer)(delayed(parallel_gx)(t0, [1], t1, [1], data_macrotime, j, split, accuracy, taumax, perform_coarsening, logtau, min_step, chunk) for chunk in list(range(n_chunks)))
                 else:
                     w0 = dataExtr[:, j+1]
                     w1 = dataExtr1[:, j+1]
-                    Processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1)(delayed(parallel_gx)(t0, w0, t1, w1, data_macrotime, j, split, accuracy, taumax, perform_coarsening, logtau, chunk) for chunk in list(range(n_chunks)))
+                    Processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1, prefer=parallel_prefer)(delayed(parallel_gx)(t0, w0, t1, w1, data_macrotime, j, split, accuracy, taumax, perform_coarsening, logtau, min_step, chunk) for chunk in list(range(n_chunks)))
             
             if calc_all_xcorr or averaging is not None:
                 c0_all.append(c0)
@@ -232,7 +235,6 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
                     setattr(G, els[el] + '_chunk' + str(l), g_temp)
     
     # ---------- CALCULATE AVERAGE CORRELATION OF ALL CHUNKS ----------
-    print("Calculating average correlations")
     if calc_all_xcorr or averaging is not None:
         G = calc_average_correlation(G)
     
@@ -252,22 +254,22 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
     return G
 
 
-def parallel_g(t0, w0, macrotime, filter_number, split, accuracy, taumax, perform_coarsening, logtau, chunk):
+def parallel_g(t0, w0, macrotime, filter_number, split, accuracy, taumax, perform_coarsening, logtau, min_step, chunk):
     tstart = chunk * split / macrotime
     tstop = (chunk + 1) * split / macrotime
     tchunk = t0[(t0 >= tstart) & (t0 < tstop)]
     tchunkN = tchunk - tchunk[0]
     if filter_number == 0:
         # no filter
-        Gtemp = atimes_2_corr(tchunkN, tchunkN, [1], [1], macrotime, accuracy, taumax, perform_coarsening, logtau)
+        Gtemp = atimes_2_corr(tchunkN, tchunkN, [1], [1], macrotime, accuracy, taumax, perform_coarsening, logtau, min_step=min_step)
     else:
         # filters
         wchunk = w0[(t0 >= tstart) & (t0 < tstop)].copy()
-        Gtemp = atimes_2_corr(tchunkN, tchunkN, wchunk, wchunk, macrotime, accuracy, taumax, perform_coarsening, logtau)
+        Gtemp = atimes_2_corr(tchunkN, tchunkN, wchunk, wchunk, macrotime, accuracy, taumax, perform_coarsening, logtau, min_step=min_step)
     return(Gtemp)
 
 
-def parallel_gx(t0, w0, t1, w1, macrotime, filter_number, split, accuracy, taumax, perform_coarsening, logtau, chunk):
+def parallel_gx(t0, w0, t1, w1, macrotime, filter_number, split, accuracy, taumax, perform_coarsening, logtau, min_step, chunk):
     tstart = chunk * split / macrotime
     tstop = (chunk + 1) * split / macrotime
     tchunk0 = t0[(t0 >= tstart) & (t0 < tstop)]
@@ -278,12 +280,12 @@ def parallel_gx(t0, w0, t1, w1, macrotime, filter_number, split, accuracy, tauma
     tchunk1 = tchunk1 - tN
     if filter_number == 0:
         # no filter
-        Gtemp = atimes_2_corr(tchunk0, tchunk1, [1], [1], macrotime, accuracy, taumax, perform_coarsening, logtau)
+        Gtemp = atimes_2_corr(tchunk0, tchunk1, [1], [1], macrotime, accuracy, taumax, perform_coarsening, logtau, min_step=min_step)
     else:
         # filters
         wchunk0 = w0[(t0 >= tstart) & (t0 < tstop)].copy()
         wchunk1 = w1[(t1 >= tstart) & (t1 < tstop)].copy()
-        Gtemp = atimes_2_corr(tchunk0, tchunk1, wchunk0, wchunk1, macrotime, accuracy, taumax, perform_coarsening, logtau)
+        Gtemp = atimes_2_corr(tchunk0, tchunk1, wchunk0, wchunk1, macrotime, accuracy, taumax, perform_coarsening, logtau, min_step=min_step)
     return(Gtemp)
 
 
@@ -359,7 +361,7 @@ def extract_atimes_for_corr(data, corr, split):
         corrname = corr
         crossCorr = True
     else:
-        print("Extracting and sorting photons")
+        print("Extracting photons")
         dataExtr = extract_spad_photon_streams(data, corr)
         t0 = dataExtr[:, 0]
         t1 = None

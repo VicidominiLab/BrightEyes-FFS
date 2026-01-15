@@ -108,7 +108,7 @@ def detector_element_coordinates(detector, element=None):
         
         sx /= np.sqrt(3)
         
-    elif detector == 'luminosa' or detector == 'pda-23':
+    elif detector in {"luminosa", "pda-23", "pda23"}:
         
         # 31  30  29  28  27
         #   26  25  24  23

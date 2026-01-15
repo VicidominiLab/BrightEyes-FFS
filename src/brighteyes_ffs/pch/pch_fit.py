@@ -548,21 +548,22 @@ def global_fit_result_to_parameters(param, fit_info, n_hist, global_param, fitre
     Turn global fit result ouput into a 2D array with all the parameter values
     for each histogram
     """
+    param_out = param.copy()
     fitresult_idx = 0
     for i in range(len(fit_info)):
         if fit_info[i]:
             # parameter is fitted
             if global_param[i]:
                 # parameter is global
-                param[i,:] = fitresult_x[fitresult_idx]
+                param_out[i,:] = fitresult_x[fitresult_idx]
                 fitresult_idx += 1
             else:
                 # parameter is unique for each histogram
                 for j in range(n_hist):
-                    param[i,j] = fitresult_x[fitresult_idx]
+                    param_out[i,j] = fitresult_x[fitresult_idx]
                     fitresult_idx += 1
     
-    return param
+    return param_out
                 
 
 def global_fit_result_to_residuals(fitresult_fun, hist, n_hist, weights, minimization):

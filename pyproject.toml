@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "brighteyes-ffs"
-version = "0.0.45"
+version = "0.0.51"
 authors = [
   { name="Eli Slenders", email="eli.slenders@iit.it" }
 ]
@@ -19,16 +19,18 @@ dependencies = [
     "tifffile>=2020.9.29",
     "seaborn",
     "imutils",
-	"nbformat",
+	"nbformat==5.8.0",
 	"PyQt5",
 	"qdarkstyle",
 	"ome_types",
 	"czifile",
 	"pydantic<2.0",
 	"brighteyes_ism",
-	"notebook",
+	"notebook==6.4.11",
 	"openpyxl",
 	"ptufile",
+	"libttp",
+	"jsonschema==4.17.3",
 ]
 description = "Toolbox for analysing FCS/FFS data with array detectors"
 readme = "README.md"

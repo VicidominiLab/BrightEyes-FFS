@@ -3,12 +3,15 @@ import pandas as pd
 import h5py
 import os
 
-from .fcs2arrivaltimes import ATimesData
 from ..tools.list_files import list_files
 from ..tools.closefile import closefile
 
 import libttp.ttp as ttp
 import ptufile
+
+
+class ATimesData:
+    pass
 
 
 def load_atimes_data(fname, channels='auto', sysclk_MHz=240, perform_calib=True):
@@ -171,7 +174,7 @@ def atimes_data_2_duration(data, macrotime=1.0, subtract_start_time=False, retur
         Subtract the start time, so duration = last photon time - first photon time
     return_period : boolean
         If False: return duration of the measurement
-        If True: return maximum microtime
+        If True: return maximum microtime found
 
     Returns
     -------

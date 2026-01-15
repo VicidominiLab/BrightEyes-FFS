@@ -62,8 +62,8 @@ def plot_fingerprint_airyscan(counts, cmap='inferno', plot=False, figsize=(5,5))
                                         facecolor = color,
                                         alpha=1))
         
-        plt.xlim([-3,3])
-        plt.ylim([-3,3])
+        plt.xlim([-3,3.5])
+        plt.ylim([-3.5,3.5])
         plt.xticks([])
         plt.yticks([])
         ax.set_axis_off()

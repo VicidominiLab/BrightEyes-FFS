@@ -7,7 +7,7 @@ from .extract_spad_data_kw import keyword_2_ch
 import re
 
 
-def plot_correlations_microimage(detector, list_of_g, list_of_g_out=None, averaging=None, figsize=(5,5)):
+def plot_correlations_microimage(detector, list_of_g, list_of_g_out=None, averaging=None, figsize=(5,5), savefig=None):
     """
     Plot scheme of the detector with correlations indicated as colored pixels
     or arrows.
@@ -36,7 +36,7 @@ def plot_correlations_microimage(detector, list_of_g, list_of_g_out=None, averag
     
     xx = detector_element_coordinates(detector, element=None)
     
-    if type(list_of_g[0]) is not str or str.lower(list_of_g[0]) != 'crossall':
+    if averaging is None and (type(list_of_g[0]) is not str or str.lower(list_of_g[0]) != 'crossall'):
         
         if len(list_of_g) > 6:
             n_rows = int(np.ceil(len(list_of_g)/6))
@@ -191,3 +191,44 @@ def plot_correlations_microimage(detector, list_of_g, list_of_g_out=None, averag
         plt.yticks([])
         ax.set_axis_off()
         idx_scalar += 1
+    
+    if savefig is not None:
+        plt.savefig(savefig)
+
+
+def plot_det_element_map(detector, figsize=(5,5), savefig=None):
+    xx = detector_element_coordinates(detector, element=None)
+    
+    fig, axs = plt.subplots(figsize=figsize, constrained_layout=True)
+
+    # Identify which rows are (0,0)
+    is_zero = np.all(xx == 0, axis=1)
+    # Find the last zero-row index
+    zero_indices = np.where(is_zero)[0]
+    if len(zero_indices) > 0:
+        last_zero = zero_indices[-1]
+        is_zero[last_zero] = False
+        mask = ~is_zero
+    else:
+        mask = np.ones(len(xx), dtype=bool)   # no zero rows
+    
+    # draw detector elements
+    for c in range(len(xx)):
+        x = xx[c, 0]
+        y = xx[c, 1]
+        clr = color_from_map(np.sqrt(x**2+y**2), startv=-1, stopv=4, cmap='inferno_r')
+        if mask[c]:
+            axs.add_patch(CirclePolygon((x, y), radius=0.45, resolution=51, alpha=0.7, color=clr))
+            axs.text(xx[c, 0], xx[c, 1], str(c), fontsize=18, verticalalignment='center', horizontalalignment='center')
+    axs.set_xlim([np.min(xx)-0.5, np.max(xx)+0.5])
+    axs.set_ylim([np.min(xx)-0.5, np.max(xx)+0.5])        
+            
+    plt.xticks([])
+    plt.yticks([])
+    axs.set_axis_off()
+    axs.set_title(detector, fontsize=18)
+    axs.set_box_aspect(1)
+        
+    
+    if savefig is not None:
+        plt.savefig(savefig)

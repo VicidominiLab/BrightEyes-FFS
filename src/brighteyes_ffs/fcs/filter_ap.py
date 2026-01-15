@@ -87,7 +87,7 @@ def filter_2c(hist1, hist2, b, plot_fig=True):
         Vector with the histogram values for component 2
         (can be theoretical or experimental curve
          can - but does not have to - be normalized..
-    b : TYPE
+    b : float
         Number, scaling factor describing the weight of hist2
         with respect to hist1
         equal to amplitude(hist2) / amplitude(hist1) for unnormalized

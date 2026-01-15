@@ -56,7 +56,6 @@ def atimes_2_corrs(data, list_of_corr, accuracy=50, taumax="auto", perform_coars
             t0 = dataExtr[:, 0]
             corrname = 'det' + str(corr)
         else:
-            print("Extracting and sorting photons")
             dataExtr = extract_spad_photon_streams(data, corr)
             t0 = dataExtr[:, 0]
             corrname = corr
@@ -106,7 +105,7 @@ def atimes_2_corrs(data, list_of_corr, accuracy=50, taumax="auto", perform_coars
     return G
 
 
-def atimes_2_corr(t0, t1, w0, w1, macroTime, accuracy=50, taumax="auto", perform_coarsening=True, logtau=True):
+def atimes_2_corr(t0, t1, w0, w1, macroTime, accuracy=50, taumax="auto", perform_coarsening=True, logtau=True, min_step=10):
     """
     Calculate correlation between two photon streams with arrival times t0 and t1
     Inspired by Wahl et al., Opt. Expr. 11 (26), 2003
@@ -144,7 +143,6 @@ def atimes_2_corr(t0, t1, w0, w1, macroTime, accuracy=50, taumax="auto", perform
 
     """
     
-    
     # convert t0 and t1 lists to array
     t0 = np.asarray(t0)
     t1 = np.asarray(t1)
@@ -153,10 +151,25 @@ def atimes_2_corr(t0, t1, w0, w1, macroTime, accuracy=50, taumax="auto", perform
     if taumax=="auto":
         taumax = t0[-1] / 10
     
+    # weights
+    if len(w0) == 1:
+        w0 = np.ones(len(t0))
+    if len(w1) == 1:
+        w1 = np.ones(len(t1))
+    
+    # coarse factor
+    c = 1
+    
+    for i in range(min_step):
+    # change in step size: perform coarsening
+        c *= 2
+        [t0, w0, ind] = time_coarsening(t0, w0)
+        [t1, w1, ind] = time_coarsening(t1, w1)
+    
     # generate list [tau] with logarithmically distributed tau values
     t = 0
     tau = []
-    step = 1
+    step = int(2**min_step)
     if logtau:
         while t <= taumax:
             for i in range(accuracy):
@@ -173,38 +186,8 @@ def atimes_2_corr(t0, t1, w0, w1, macroTime, accuracy=50, taumax="auto", perform
     # create array for g and weights
     N = len(tau)
     g = np.zeros(N)
-    if len(w0) == 1:
-        w0 = np.ones(len(t0))
-    if len(w1) == 1:
-        w1 = np.ones(len(t1))
     
-    # coarse factor
-    c = 1
     
-    # tau = np.asarray(tau)
-    # tau_diff = tau[1:] - tau[0:-1]
-    # g = []
-    
-    # for tau_d in list(np.sort(np.unique(tau_diff))):
-    #     idx = tau_diff == tau_d
-    #     idxT = np.where(idx==True)[0]
-    #     tau_list_temp = list(tau[idxT + 1])
-    #     if tau_d == 1:
-    #         tau_list = [0] + tau_list_temp
-    #     else:
-    #         tau_list = tau_list_temp
-        
-        
-        
-    #     gtemp = Parallel(n_jobs=-2)(delayed(atimes_2_corr_single)(t0, t1, w0, w1, t, c) for t in tau_list)
-    #     g += gtemp
-    #     # perform coarsening
-    #     c *= 2
-    #     [t0, w0, ind] = time_coarsening(t0, w0)
-    #     [t1, w1, ind] = time_coarsening(t1, w1)
-    
-    # g = np.transpose(np.asarray(g))
-        
     for i in range(N):
         t = tau[i]
         g[i] = atimes_2_corr_single(t0, t1, w0, w1, t/c, c)
@@ -248,17 +231,16 @@ def atimes_2_corr_single(t0, t1, w0, w1, tau, c):
         Single value g(tau).
 
     """
-    
-    # calculate time shifted vector
-    t1 = t1 + tau
-    
-    # find intersection between t0 and t1
-    [tauDouble, idxt0, idxt1] = np.intersect1d(t0, t1, return_indices=True)
-    
     # overlap time
     T = (t0[-1] - tau + 1) * c
     if T <= 0:
         return 0
+    
+    # calculate time shifted vector
+    t1 = t1 + tau
+    
+    # find intersection between t0 and t1_tau
+    [tauDouble, idxt0, idxt1] = np.intersect1d(t0, t1, return_indices=True)
     
     # calculate autocorrelation value
     G = np.sum(w0[idxt0] * w1[idxt1]) / T / c
