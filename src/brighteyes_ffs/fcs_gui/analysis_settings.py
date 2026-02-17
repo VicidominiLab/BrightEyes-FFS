@@ -670,7 +670,7 @@ class CorrFit():
         if columnNotFound:
             return np.zeros((5,5)), columnNotFound
         
-        z = g2polar(allfits)
+        z = g2polar(allfits, Nr=512)
     
         return z, columnNotFound
     

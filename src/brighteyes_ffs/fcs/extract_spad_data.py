@@ -1,5 +1,6 @@
 import numpy as np
 import re
+from .extract_spad_data_kw import keyword_2_ch
 
 
 def extract_spad_data(data, mode):
@@ -9,9 +10,9 @@ def extract_spad_data(data, mode):
     Parameters
     ----------
     data : 2D numpy array
-        [Nt x 25] array with fcs data as a function of time assuming a 
-        5x5 array detector
-        if 26 columns: last one is assumed to be the sum over all channels.
+        [Nt x Nc] array with intensity as a function of time
+        Nt: number of time points
+        Nc: number of channels
     mode : scalar or string
         Either
         - a number i between 0-25: extract data detector element i
@@ -40,18 +41,27 @@ def extract_spad_data(data, mode):
     
     # Check data type
     if isinstance(mode, str):
-        if mode[0] == 'C':
+        if mode == 'sum_all':
+            return np.sum(data, axis=1)
+        elif mode[0] == 'C':
             # list of channels to be summed, e.g. "C1+3+12+42"
             channels = [int(i) for i in re.findall(r'\d+', mode)]
-            return np.sum(data[:, channels], axis=1)
+        elif mode[0] == 'N':
+            # list of channels to be removed, e.g. "C1+3+12+42"
+            channels_out = [int(i) for i in re.findall(r'\d+', mode)]
+            channels = [i for i in range(np.shape(data)[1]) if i not in channels_out]
         else:
-            return switch_mode_string(data, mode)
+            channels = keyword_2_ch[mode]
+        if len(channels) == 1:
+            return np.squeeze(data[:, channels])
+        else:
+            return np.sum(data[:, channels], axis=1)
     else:
         # number given
         if mode >= 0:
             return data[:, mode]
         else:
-            return np.subtract(data[:, 25], data[:,np.mod(-mode, 25)])
+            return np.subtract(np.sum(data, 1), data[:,np.mod(-mode, 25)])
    
 
 def sum_all(data):

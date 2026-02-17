@@ -108,7 +108,7 @@ def fit_curve(y, x, fitfun, fitInfo, param, lBounds, uBounds, savefig=0):
     if fitfun == 'powerlaw':
         fitresult = least_squares(fitfun_powerlaw, fitparamStart, args=(fixedparam, fitInfo, x, y), bounds=(lowerBounds, upperBounds))
     elif fitfun == 'exp':
-        fitresult = least_squares(fitfun_exp, fitparamStart, args=(fixedparam, fitInfo, x, y), bounds=(lowerBounds, upperBounds))
+        fitresult = least_squares(fitfun_exp_n, fitparamStart, args=(fixedparam, fitInfo, x, y), bounds=(lowerBounds, upperBounds))
     elif fitfun == 'linear':
         fitresult = least_squares(fitfun_linear, fitparamStart, args=(fixedparam, fitInfo, x, y), bounds=(lowerBounds, upperBounds))
         
@@ -176,7 +176,7 @@ def fitfun_exp(fitparamStart, fixedparam, fitInfo, x, y):
     ----------
     fitparamStart : np.array()
         List with starting values for the fit parameters:
-        order: [A, alpha, B]
+        order: [A, alpha, dx, B]
         E.g. if only A and B are fitted, this becomes a two
         element vector [1e-4, 0.2].
     fixedparam : np.array()
@@ -205,9 +205,9 @@ def fitfun_exp(fitparamStart, fixedparam, fitInfo, x, y):
     # get parameters
     A = fitparam[0]
     alpha = fitparam[1]
-    B = fitparam[2]
-    dx = fitparam[3]
-
+    dx = fitparam[2]
+    B = fitparam[3]
+    
     # calculate theoretical curve
     ytheo = A * np.exp(-alpha * (x-dx)) + B
     
@@ -215,7 +215,87 @@ def fitfun_exp(fitparamStart, fixedparam, fitInfo, x, y):
     res = y - ytheo
     
     return res
-   
+
+
+def fitfun_exp_n(fitparamStart, fixedparam, fitInfo, x, y):
+    """
+    Sum of exponentials fit function
+    y = sum(A_i * exp(-alpha_i * (x-dx))) + offset
+    Same dx assumed for each exponential
+    (alpha = 1 / tau with tau the lifetime)
+
+    Parameters
+    ----------
+    fitparamStart : np.array
+        List with starting values for the fit parameters:
+        order: [A1, alpha1, A2, alpha2, ...,dx, offset]
+        E.g. if only A and B are fitted, this becomes a two
+        element vector [1e-4, 0.2].
+    fixedparam : np.array
+        List with values for the fixed parameters:
+        order: [A, alpha, B, ..., dx]
+        same principle as fitparamStart.
+    fitInfo : np.array
+        np.array boolean vector with always 2*n+2 elements with n the number of
+        components
+        1 for a fitted parameter, 0 for a fixed parameter.
+    x : np.array
+        Vector with x values.
+    y : np.array
+        Vector with experimental y values.
+
+    Returns
+    -------
+    res : np.array
+        Residuals.
+
+    """
+    
+    fitparam = np.float64(np.zeros(len(fitInfo)))
+    fitparam[fitInfo==1] = fitparamStart
+    fitparam[fitInfo==0] = fixedparam
+    
+    # calculate theoretical exponential function
+    ytheo = fun_exp_n(x, fitparam)
+    
+    # calculate residuals
+    res = y - ytheo
+    
+    return res
+
+
+def fun_exp_n(x, param):
+    """
+    Calculate theoretical exponential function, multiple components allowed
+
+    Parameters
+    ----------
+    x : np.array()
+        1D array with x values
+    param : list
+        [A1, alpha1, A2, alpha2, ...,dx, offset].
+
+    Returns
+    -------
+    ytheo : np.array()
+        1D array with y values.
+
+    """
+    # number of components
+    n_comp = int((len(param) - 2) / 2)
+    
+    # global values
+    dx = param[-2]
+    offset = param[-1]
+    ytheo = 0
+    for i in range(n_comp):
+        A = param[2*i]
+        alpha = param[2*i+1]
+        ytheo += A * np.exp(-alpha * (x-dx))
+    ytheo += offset
+    return ytheo
+
+
 def fitfun_linear(fitparamStart, fixedparam, fitInfo, x, y):
     """
     Linear fit function

@@ -199,11 +199,11 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
             else:
                 for chunk in range(n_chunks):
                     if list_of_g_out is None:
-                        corrname_out = corrname + "F" + str(j)
+                        corrname_out = corrname
                     else:
                         corrname_out = list_of_g_out[idx_corr]
-                        if j > 0:
-                            corrname_out += "F" + str(j)
+                    if j > 0:
+                        corrname_out += "F" + str(j)
                     setattr(G, corrname_out + '_chunk' + str(chunk), Processed_list[chunk])
            
                 # average over all chunks

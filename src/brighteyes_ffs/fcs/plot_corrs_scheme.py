@@ -81,7 +81,7 @@ def plot_correlations_microimage(detector, list_of_g, list_of_g_out=None, averag
                 else:
                     ax.add_patch(CirclePolygon((xx[c0, 0], xx[c0, 1]), radius=0.45, resolution=51, alpha=1, color=clr))
                     ax.add_patch(CirclePolygon((xx[c1, 0], xx[c1, 1]), radius=0.45, resolution=51, alpha=1, color=clr))
-                    ax.arrow(xx[c0, 0], xx[c0, 1], xx[c1, 0]-xx[c0, 0], xx[c1, 1]-xx[c0, 1], width=0.1, length_includes_head=True, alpha=0.5, color='k', edgecolor=None)
+                    ax.arrow(xx[c0, 0], xx[c0, 1], xx[c1, 0]-xx[c0, 0], xx[c1, 1]-xx[c0, 1], width=0.1, length_includes_head=True, alpha=0.5, color='k', zorder=10, edgecolor=None)
                 
             elif corr[0] == 'C':
                 # crosscorrelation custom sum of channels
@@ -98,7 +98,7 @@ def plot_correlations_microimage(detector, list_of_g, list_of_g_out=None, averag
                         clr2 = color_from_map(32, startv=0, stopv=41, cmap='inferno')
                         ax.add_patch(CirclePolygon((xx[k, 0], xx[k, 1]), radius=0.45, resolution=51, alpha=1, color=clr2))
                         used_ch.append(xx[k, :])
-                    ax.arrow(ch0_mean[0], ch0_mean[1], ch1_mean[0]-ch0_mean[0], ch1_mean[1]-ch0_mean[1], width=0.1, length_includes_head=True, alpha=0.5, color='k', edgecolor=None)
+                    ax.arrow(ch0_mean[0], ch0_mean[1], ch1_mean[0]-ch0_mean[0], ch1_mean[1]-ch0_mean[1], width=0.1, length_includes_head=True, alpha=0.5, color='k', zorder=10, edgecolor=None)
                     
                 else:
                     sum_ch = [int(i) for i in re.findall(r'\d+', corr)]
@@ -167,7 +167,7 @@ def plot_correlations_microimage(detector, list_of_g, list_of_g_out=None, averag
             for j in range(int(len(all_ch)/2)):
                 c0 = all_ch[2*j]
                 c1 = all_ch[2*j+1]
-                ax.arrow(xx[c0, 0], xx[c0, 1], xx[c1, 0]-xx[c0, 0], xx[c1, 1]-xx[c0, 1], width=0.1, length_includes_head=True, alpha=0.5, color='k', edgecolor=None)
+                ax.arrow(xx[c0, 0], xx[c0, 1], xx[c1, 0]-xx[c0, 0], xx[c1, 1]-xx[c0, 1], width=0.1, length_includes_head=True, alpha=0.5, color='k', zorder=10, edgecolor=None)
         
             plt.xticks([])
             plt.yticks([])

@@ -14,6 +14,8 @@ keyword_2_ch = {
       "central": [12],
       "sum3": [6, 7, 8, 11, 12, 13, 16, 17, 18],
       "sum5": [i for i in range(25)],
+      "chess0": list(range(0, 25, 2)),
+      "chess1": list(range(1, 25, 2)),
       
     # PI23
       "picentral": [20],

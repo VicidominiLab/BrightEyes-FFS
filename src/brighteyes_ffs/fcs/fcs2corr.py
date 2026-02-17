@@ -7,6 +7,7 @@ import ntpath
 import scipy as spy
 from pathlib import Path
 import fnmatch
+from typing import List
 
 from .extract_spad_data import extract_spad_data
 from .distance2detelements import distance2detelements, spad_shift_vector_crosscorr
@@ -105,6 +106,36 @@ class Correlations:
         listOfCorr2 = list(dict.fromkeys(listOfCorr2))
         return listOfCorr2
     
+    @property
+    def list_of_g_out_filters(self):
+        """
+        Returns:
+          - unique base names, where a trailing 'F<number>' is ignored
+          - the maximum trailing F tag as a string like 'F2' (or None if no F tags)
+        """
+        names = self.list_of_g_out
+        
+        base_pattern = re.compile(r"^(.*?)(?:F(\d+))?$")  # base + optional trailing F#
+        bases: List[str] = []
+        seen = set()
+        max_f = -1
+    
+        for s in names:
+            m = base_pattern.match(s)
+            if not m:
+                continue
+            base, fnum = m.group(1), m.group(2)
+    
+            if base not in seen:
+                seen.add(base)
+                bases.append(base)
+    
+            if fnum is not None:
+                max_f = max(max_f, int(fnum))
+    
+        max_f_tag = max_f if max_f >= 0 else None
+        return bases, max_f_tag
+    
     def average_chunks(self, listOfChunks):
         """
         identical to G = fcs_av_chunks(G, listOfChunks)
@@ -128,7 +159,7 @@ class Correlations:
             setattr(self, corr + '_averageX', Gtot)
 
     
-def fcs_load_and_corr_split(fname, list_of_g=['central', 'sum3', 'sum5'], accuracy=16, split=10, binsize=1, time_trace=False, metadata=None, root=0, list_of_g_out=None, averaging=None, algorithm='multipletau'):
+def fcs_load_and_corr_split(fname, list_of_g=['central', 'sum3', 'sum5'], accuracy=16, split=10, binsize=1, time_trace=False, metadata=None, root=0, list_of_g_out=None, averaging=None, algorithm='multipletau', print_info=True):
     """
     Load data from a file in chunks and calculate correlations.
 
@@ -209,9 +240,10 @@ def fcs_load_and_corr_split(fname, list_of_g=['central', 'sum3', 'sum5'], accura
             root.progress = chunk / N
         string2print = "| Loading chunk " + str(chunk+1) + "/" + str(N) + " |"
         stringL = len(string2print) - 2
-        print("+" + "-"*stringL + "+")
-        print(string2print)
-        print("+" + "-"*stringL + "+")
+        if print_info:
+            print("+" + "-"*stringL + "+")
+            print(string2print)
+            print("+" + "-"*stringL + "+")
         data = file_to_fcs_count(fname, np.uint8, chunkSize, chunk*chunkSize)
         if time_trace == True:
             binSize_tt = int(chunkSize / 1000 * N) # time trace binned to 1000 data points
@@ -224,7 +256,8 @@ def fcs_load_and_corr_split(fname, list_of_g=['central', 'sum3', 'sum5'], accura
         
         indk = 0
         for ind, j in enumerate(list_of_g):
-            print('     --> ' + str(j) + ": ", end = '')
+            if print_info:
+                print('     --> ' + str(j) + ": ", end = '')
             # ------------------ CHUNK ------------------
             newList = [j]
             Gsplit = fcs2corr(data, 1e6*dwellTime, newList, accuracy, binsize, averaging=averaging, list_of_g_out=list_of_g_out, algorithm=algorithm)
@@ -305,51 +338,59 @@ def fcs2corr(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard
     
     # dwell time
     G.dwellTime = dwell_time
+    
+    # list_of_g_out index
+    if list_of_g_out is not None:
+        list_of_g_out_enum = enumerate(list_of_g_out)
 
     if len(np.shape(data)) == 1:
         # vector is given instead of matrix, single detector only
         print('Calculating autocorrelation ')
-        setattr(G, 'det0', correlate(data, data, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
+        if list_of_g_out is not None:
+            attrname = next(list_of_g_out_enum)[1]
+        else:
+            attrname = 'det0'
+        setattr(G, attrname, correlate(data, data, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
         return G
 
     num_ch = np.shape(data)[1]
     for i in list_of_g:
         if isinstance(i, int):
+            # ----------------------------------------------------------------
             # autocorrelation of a detector element i
+            # ----------------------------------------------------------------
+            if list_of_g_out is not None:
+                attrname = next(list_of_g_out_enum)[1]
+            else:
+                attrname = 'det' + str(i)
             print('Calculating autocorrelation of detector element ' + str(i))
             dataSingle = extract_spad_data(data, i)
-            setattr(G, 'det' + str(i), correlate(dataSingle, dataSingle, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
-
-        elif i == "central":
-            # autocorrelation central detector element
-            print('Calculating autocorrelation central detector element')
-            dataCentral = extract_spad_data(data, "central")
-            G.central = correlate(dataCentral, dataCentral, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
+            setattr(G, attrname, correlate(dataSingle, dataSingle, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
 
         elif i[0] == 'x':
+            # ----------------------------------------------------------------
             # cross correlation two detector elements: e.g. 'x0112' for det1 x det12
+            # ----------------------------------------------------------------
+            if list_of_g_out is not None:
+                attrname = next(list_of_g_out_enum)[1]
+            else:
+                attrname = i
             det0 = int(i[1:3])
             det1 = int(i[3:5])
             dataSingle0 = extract_spad_data(data, det0)
             dataSingle1 = extract_spad_data(data, det1)
             print('Calculating cross-correlation detector elements ' + str(det0) + 'x' + str(det1))
             Gtemp = correlate(dataSingle0, dataSingle1, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
-            setattr(G, i, Gtemp)
+            setattr(G, attrname, Gtemp)
 
-        elif i == "sum3":
-            # autocorrelation sum3x3
-            print('Calculating autocorrelation sum3x3')
-            dataSum3 = extract_spad_data(data, "sum3")
-            G.sum3 = correlate(dataSum3, dataSum3, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
-
-        elif i == "sum5":
-            # autocorrelation sum3x3
-            print('Calculating autocorrelation sum5x5')
-            dataSum5 = extract_spad_data(data, "sum5")
-            G.sum5 = correlate(dataSum5, dataSum5, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
-            
         elif i[0] == "C":
+            # ----------------------------------------------------------------
             # crosscorrelation custom sum of channels
+            # ----------------------------------------------------------------
+            if list_of_g_out is not None:
+                attrname = next(list_of_g_out_enum)[1]
+            else:
+                attrname = i
             xpos = np.max([i.find('X'), i.find('x')])
             if xpos > -1:
                 print('Calculating crosscorrelation custom sum')
@@ -359,65 +400,134 @@ def fcs2corr(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard
                 print('Calculating autocorrelation custom sum')
                 dataSum1 = extract_spad_data(data, i)
                 dataSum2 = dataSum1
-            setattr(G, i, correlate(dataSum1, dataSum2, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
+            setattr(G, attrname, correlate(dataSum1, dataSum2, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
         
-        elif i == "allbuthot":
-            # autocorrelation sum5x5 except for the hot pixels
-            print('Calculating autocorrelation allbuthot')
-            dataAllbuthot = extract_spad_data(data, "allbuthot")
-            G.allbuthot = correlate(dataAllbuthot, dataAllbuthot, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
+        # elif i == "central":
+        #     # ----------------------------------------------------------------
+        #     # autocorrelation central detector element
+        #     # ----------------------------------------------------------------
+        #     if list_of_g_out is not None:
+        #         attrname = next(list_of_g_out_enum)[1]
+        #     else:
+        #         attrname = i
+        #     print('Calculating autocorrelation central detector element')
+        #     dataCentral = extract_spad_data(data, "central")
+        #     setattr(G, attrname, correlate(dataCentral, dataCentral, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
 
-        elif i == "chessboard":
-            # crosscorrelation chessboard
-            print('Calculating crosscorrelation chessboard')
-            dataChess0 = extract_spad_data(data, "chess0")
-            dataChess1 = extract_spad_data(data, "chess1")
-            G.chessboard = correlate(dataChess0, dataChess1, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
+        # elif i == "sum3":
+        #     # ----------------------------------------------------------------
+        #     # autocorrelation sum3x3
+        #     # ----------------------------------------------------------------
+        #     if list_of_g_out is not None:
+        #         attrname = next(list_of_g_out_enum)[1]
+        #     else:
+        #         attrname = i
+        #     print('Calculating autocorrelation sum3x3')
+        #     dataSum3 = extract_spad_data(data, "sum3")
+        #     setattr(G, attrname, correlate(dataSum3, dataSum3, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
+
+        # elif i == "sum5":
+        #     # ----------------------------------------------------------------
+        #     # autocorrelation sum5x5
+        #     # ----------------------------------------------------------------
+        #     if list_of_g_out is not None:
+        #         attrname = next(list_of_g_out_enum)[1]
+        #     else:
+        #         attrname = i
+        #     print('Calculating autocorrelation sum5x5')
+        #     dataSum5 = extract_spad_data(data, "sum5")
+        #     setattr(G, attrname, correlate(dataSum5, dataSum5, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
             
-        elif i == "chess3":
-            # crosscorrelation small 3x3 chessboard
-            print('Calculating crosscorrelation small chessboard')
-            dataChess0 = extract_spad_data(data, "chess3a")
-            dataChess1 = extract_spad_data(data, "chess3b")
-            G.chess3 = correlate(dataChess0, dataChess1, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
+        # elif i == "allbuthot":
+        #     # ----------------------------------------------------------------
+        #     # autocorrelation sum5x5 except for the hot pixels
+        #     # ----------------------------------------------------------------
+        #     if list_of_g_out is not None:
+        #         attrname = next(list_of_g_out_enum)[1]
+        #     else:
+        #         attrname = i
+        #     print('Calculating autocorrelation allbuthot')
+        #     dataAllbuthot = extract_spad_data(data, "allbuthot")
+        #     setattr(G, attrname, correlate(dataAllbuthot, dataAllbuthot, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
 
-        elif i == "ullr":
-            # crosscorrelation upper left and lower right
-            print('Calculating crosscorrelation upper left and lower right')
-            dataUL = extract_spad_data(data, "upper_left")
-            dataLR = extract_spad_data(data, "lower_right")
-            G.ullr = correlate(dataUL, dataLR, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
+        # elif i == "chessboard":
+        #     # ----------------------------------------------------------------
+        #     # crosscorrelation chessboard
+        #     # ----------------------------------------------------------------
+        #     if list_of_g_out is not None:
+        #         attrname = next(list_of_g_out_enum)[1]
+        #     else:
+        #         attrname = i
+        #     print('Calculating crosscorrelation chessboard')
+        #     dataChess0 = extract_spad_data(data, "chess0")
+        #     dataChess1 = extract_spad_data(data, "chess1")
+        #     setattr(G, attrname, correlate(dataChess0, dataChess1, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
+            
+        # elif i == "chess3":
+        #     # ----------------------------------------------------------------
+        #     # crosscorrelation small 3x3 chessboard
+        #     # ----------------------------------------------------------------
+        #     print('Calculating crosscorrelation small chessboard')
+        #     if list_of_g_out is not None:
+        #         attrname = next(list_of_g_out_enum)[1]
+        #     else:
+        #         attrname = i
+        #     dataChess0 = extract_spad_data(data, "chess3a")
+        #     dataChess1 = extract_spad_data(data, "chess3b")
+        #     setattr(G, attrname, correlate(dataChess0, dataChess1, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
+
+        # elif i == "ullr":
+        #     # ----------------------------------------------------------------
+        #     # crosscorrelation upper left and lower right
+        #     # ----------------------------------------------------------------
+        #     if list_of_g_out is not None:
+        #         attrname = next(list_of_g_out_enum)[1]
+        #     else:
+        #         attrname = i
+        #     print('Calculating crosscorrelation upper left and lower right')
+        #     dataUL = extract_spad_data(data, "upper_left")
+        #     dataLR = extract_spad_data(data, "lower_right")
+        #     setattr(G, attrname, correlate(dataUL, dataLR, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
         
-        elif i == "twofocus":
-            # crosscorrelations sum5left and sum5right, sum5top, and sum5bottom
-            dataL = extract_spad_data(data, "sum5left")
-            dataR = extract_spad_data(data, "sum5right")
-            dataT = extract_spad_data(data, "sum5top")
-            dataB = extract_spad_data(data, "sum5bottom")
+        # elif i == "twofocus":
+        #     # ----------------------------------------------------------------
+        #     # crosscorrelations sum5left and sum5right, sum5top, and sum5bottom
+        #     # ----------------------------------------------------------------
+        #     dataL = extract_spad_data(data, "sum5left")
+        #     dataR = extract_spad_data(data, "sum5right")
+        #     dataT = extract_spad_data(data, "sum5top")
+        #     dataB = extract_spad_data(data, "sum5bottom")
             
-            print('Calculating crosscorrelation two-focus left and right')
-            G.twofocusLR = correlate(dataL, dataR, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
-            G.twofocusRL = correlate(dataR, dataL, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
+        #     if list_of_g_out is not None:
+        #         attrnames = [next(list_of_g_out_enum)[1] for i in range(12)]
+        #     else:
+        #         attrnames = ["twofocusLR", "twofocusRL", "twofocusTL", "twofocusLT",
+        #                     "twofocusLB", "twofocusBL", "twofocusRT", "twofocusTR",
+        #                     "twofocusRB", "twofocusRB", "twofocusTB", "twofocusBT"]
             
-            print('Calculating crosscorrelation two-focus left and top')
-            G.twofocusTL = correlate(dataT, dataL, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
-            G.twofocusLT = correlate(dataL, dataT, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
+        #     print('Calculating crosscorrelation two-focus left and right')
+        #     setattr(G, attrnames[0], correlate(dataL, dataR, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
+        #     setattr(G, attrnames[1], correlate(dataR, dataL, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
             
-            print('Calculating crosscorrelation two-focus left and bottom')
-            G.twofocusLB = correlate(dataL, dataB, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
-            G.twofocusBL = correlate(dataB, dataL, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
+        #     print('Calculating crosscorrelation two-focus left and top')
+        #     setattr(G, attrnames[2], correlate(dataT, dataL, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
+        #     setattr(G, attrnames[3], correlate(dataL, dataT, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
             
-            print('Calculating crosscorrelation two-focus right and top')
-            G.twofocusRT = correlate(dataR, dataT, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
-            G.twofocusTR = correlate(dataT, dataR, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
+        #     print('Calculating crosscorrelation two-focus left and bottom')
+        #     setattr(G, attrnames[4], correlate(dataL, dataB, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
+        #     setattr(G, attrnames[5], correlate(dataB, dataL, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
             
-            print('Calculating crosscorrelation two-focus right and bottom')
-            G.twofocusRB = correlate(dataR, dataB, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
-            G.twofocusBR = correlate(dataB, dataR, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
+        #     print('Calculating crosscorrelation two-focus right and top')
+        #     setattr(G, attrnames[6], correlate(dataR, dataT, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
+        #     setattr(G, attrnames[7], correlate(dataT, dataR, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
             
-            print('Calculating crosscorrelation two-focus top and bottom')
-            G.twofocusTB = correlate(dataT, dataB, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
-            G.twofocusBT = correlate(dataB, dataT, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
+        #     print('Calculating crosscorrelation two-focus right and bottom')
+        #     setattr(G, attrnames[8], correlate(dataR, dataB, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
+        #     setattr(G, attrnames[9], correlate(dataB, dataR, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
+            
+        #     print('Calculating crosscorrelation two-focus top and bottom')
+        #     setattr(G, attrnames[10], correlate(dataT, dataB, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
+        #     setattr(G, attrnames[11], correlate(dataB, dataT, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
             
             
         elif i == "crossCenter":
@@ -579,7 +689,19 @@ def fcs2corr(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard
             G.av = np.zeros([np.size(Gav, 0), 2])
             G.av[:, 0] = Gtemp[:, 0]
             G.av[:, 1] = Gav
-
+        
+        else:
+            # ----------------------------------------------------------------
+            # autocorrelation predefined keywords
+            # ----------------------------------------------------------------
+            if list_of_g_out is not None:
+                attrname = next(list_of_g_out_enum)[1]
+            else:
+                attrname = i
+            print('Calculating autocorrelation ' + str(i))
+            data_kw = extract_spad_data(data, i)
+            setattr(G, attrname, correlate(data_kw, data_kw, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
+            
     return G
 
 

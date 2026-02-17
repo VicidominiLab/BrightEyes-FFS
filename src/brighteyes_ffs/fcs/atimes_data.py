@@ -2,16 +2,111 @@ import numpy as np
 import pandas as pd
 import h5py
 import os
+import copy
 
 from ..tools.list_files import list_files
 from ..tools.closefile import closefile
+from ..tools.moving_average import moving_average
 
 import libttp.ttp as ttp
 import ptufile
 
 
 class ATimesData:
-    pass
+    def __init__(self):
+        self.macrotime = 1e-12
+        self.microtime = 1e-12
+    
+    @property
+    def all_channels(self):
+        all_ch = [int(k[3:]) for k in dir(self) if k.startswith('det')]
+        all_ch = ['det'+str(i) for i in sorted(all_ch)]
+        return all_ch
+    
+    @property
+    def num_channels(self):
+        return len(self.all_channels)
+    
+    def get_channels(self, startswith='det'):
+        all_ch = [int(k[len(startswith):]) for k in dir(self) if k.startswith(startswith)]
+        all_ch = [startswith+str(i) for i in sorted(all_ch)]
+        return all_ch
+    
+    def calc_hist(self, bintime='auto', ttm_correction=False, laser_freq=40e6):
+        """
+        Calculate histograms from ttm data
+
+        Parameters
+        ----------
+        bintime : float, optional
+            Bin time in ps. The default is 'auto'.
+        ttm_correction : boolean, optional
+            Only True for ttm data. The default is False.
+        n_bins : TYPE, optional
+            DESCRIPTION. The default is 576.
+        laser_freq : TYPE, optional
+            DESCRIPTION. The default is 40e6.
+
+        Returns
+        -------
+        None.
+
+        """
+        all_ch = self.all_channels
+        
+        if bintime == 'auto':
+            data_single_ch = getattr(self, all_ch[0])
+            bintime = np.min(data_single_ch[data_single_ch>0])
+            
+        max_microtime = 1e12 * atimes_data_2_duration(self, 1e-12, subtract_start_time=False, return_period=True) # ps
+        
+        for det in all_ch:
+            microtime = getattr(self, det)[:,1]
+            if ttm_correction:
+                macrotime = getattr(self, det)[:,0] # ps
+                microtime = np.mod(microtime, 1e12 / laser_freq)
+                microtime = -microtime + np.max(microtime)
+                setattr(self, det, np.transpose([macrotime, microtime]))
+            tcspc_bins = np.arange(0, max_microtime, bintime)
+            [Ihist, lifetime_bins] = np.histogram(microtime, tcspc_bins)
+            setattr(self, "hist" + det[3:], np.transpose(np.stack((lifetime_bins[0:-1], Ihist))))
+        
+    
+    def align_hist(self, n=15):
+        """
+        Align lifetime histograms of different channels. Calculate moving averaged
+        histograms, caculate derivative and find peak. Then shift everything
+        so that the peaks are aligned.
+
+        Parameters
+        ----------
+        n : int, optional
+            width of the window for the calculation of the moving average. The default is 15.
+
+        """
+        
+        histList = self.get_channels('hist')
+        
+        hshifts = np.zeros(len(histList))
+        
+        i = 0
+        for hist in histList:
+            # get histogram
+            histD = copy.deepcopy(getattr(self, hist))
+            # calculate moving average
+            IAv = moving_average(histD[:,1], n=n)
+            # calculate derivative
+            derivative = IAv[1:] - IAv[0:-1]
+            # find maximum of derivative
+            maxInd = np.argmax(derivative)
+            # shift histogram
+            histD[:,1] = np.roll(histD[:,1], -maxInd)
+            # store shifted histogram in data object
+            setattr(self, 'A' + hist, histD)
+            # store shift value
+            hshifts[i] = maxInd
+            i += 1
+        setattr(self, 'hshifts', hshifts)
 
 
 def load_atimes_data(fname, channels='auto', sysclk_MHz=240, perform_calib=True):
