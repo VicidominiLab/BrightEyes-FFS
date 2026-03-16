@@ -8,7 +8,7 @@ import numpy as np
 from .extract_spad_photon_streams import extract_spad_photon_streams
 
 
-def atimes_file_2_corr(fname, list_of_g=['central', 'sum3', 'sum5'], accuracy=16, split=10, time_trace=False, root=0, list_of_g_out=None, averaging=None, parallel_prefer=None, min_step=10):
+def atimes_file_2_corr(fname, list_of_g=['central', 'sum3', 'sum5'], accuracy=16, split=10, time_trace=False, root=0, list_of_g_out=None, averaging=None, parallel_prefer=None, min_step=10, print_info=True):
     """
     Calculate correlations between several photon streams with arrival times
     stored in an h5 or ptu TCSPC file
@@ -71,7 +71,7 @@ def atimes_file_2_corr(fname, list_of_g=['central', 'sum3', 'sum5'], accuracy=16
         [Itrace, timeBins] = np.histogram(timeAbs, time_bins)
         data[:, idet] = Itrace[0:] #/ (timeBins[2] - timeBins[1]) / 1e3
     
-    G = atimes_2_corrs_parallel(raw_data, list_of_g, accuracy=accuracy, taumax="auto", perform_coarsening=True, logtau=True, root=root, split=split, averaging=averaging, list_of_g_out=list_of_g_out, parallel_prefer=parallel_prefer, min_step=min_step)
+    G = atimes_2_corrs_parallel(raw_data, list_of_g, accuracy=accuracy, taumax="auto", perform_coarsening=True, logtau=True, root=root, split=split, averaging=averaging, list_of_g_out=list_of_g_out, parallel_prefer=parallel_prefer, min_step=min_step, print_info=print_info)
     G.dwellTime = 1e-12 # timeBins[2] - timeBins[1]
     
     if time_trace:
@@ -81,7 +81,7 @@ def atimes_file_2_corr(fname, list_of_g=['central', 'sum3', 'sum5'], accuracy=16
     
 
 
-def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0, averaging=None, perform_coarsening=True, logtau=True, split=10, list_of_g_out=None, parallel_prefer=None, min_step=10):
+def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0, averaging=None, perform_coarsening=True, logtau=True, split=10, list_of_g_out=None, parallel_prefer=None, min_step=10, print_info=True):
     """
     Calculate correlations between several photon streams with arrival times
     stored in macrotimes, using parallel computing to speed up the process
@@ -161,17 +161,19 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
     for idx_corr, corr in enumerate(list_of_g):
         if root != 0:
             root.progress = idx_corr / len(list_of_g)
-        print("Calculating correlation " + str(corr))
+        if print_info:
+            print("Calculating correlation " + str(corr))
         
         # extract atimes t0, t1 and some other data
-        t0, t1, corrname, crossCorr, dataExtr, dataExtr1, c0, c1, duration, n_chunks, data_macrotime = extract_atimes_for_corr(data, corr, split)
+        t0, t1, corrname, crossCorr, dataExtr, dataExtr1, c0, c1, duration, n_chunks, data_macrotime = extract_atimes_for_corr(data, corr, split, print_info=print_info)
         
         # CALCULATE CORRELATIONS
         # go over all filters
         num_filters = np.shape(dataExtr)[1] - 1
         for j in range(num_filters):
             if j > 0:
-                print("   Filter " + str(j))
+                if print_info:
+                    print("   Filter " + str(j))
             if crossCorr == False:
                 if j == 0:
                     Processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1, prefer=parallel_prefer)(delayed(parallel_g)(t0, [1], data_macrotime, j, split, accuracy, taumax, perform_coarsening, logtau, min_step, chunk) for chunk in list(range(n_chunks)))
@@ -323,7 +325,7 @@ def convert_crossall_to_list_of_g(n_ch, start_ch=0):
     return list_of_g
 
 
-def extract_atimes_for_corr(data, corr, split):
+def extract_atimes_for_corr(data, corr, split, print_info=True):
     crossCorr = False
     dataExtr1 = None
     c0 = None
@@ -338,7 +340,8 @@ def extract_atimes_for_corr(data, corr, split):
         # cross-correlation two channels, e.g., x0412 between 4 and 12
         c0 = corr[1:3] # first channel
         c1 = corr[3:5] # second channel
-        print("Extracting photons channels " + c0 + " and " + c1)
+        if print_info:
+            print("Extracting photons channels " + c0 + " and " + c1)
         dataExtr = getattr(data, 'det' + str(int(c0)))
         t0 = dataExtr[:, 0]
         dataExtr1 = getattr(data, 'det' + str(int(c1)))
@@ -349,11 +352,13 @@ def extract_atimes_for_corr(data, corr, split):
         # crosscorrelation custom sum of channels
         xpos = np.max([corr.find('X'), corr.find('x')])
         if xpos > -1:
-            print('Calculating crosscorrelation custom sum')
+            if print_info:
+                print('Calculating crosscorrelation custom sum')
             dataExtr = extract_spad_photon_streams(data, corr[0:xpos])
             dataExtr1 = extract_spad_photon_streams(data, 'C' + corr[xpos+1:])
         else:
-            print('Calculating autocorrelation custom sum')
+            if print_info:
+                print('Calculating autocorrelation custom sum')
             dataExtr = extract_spad_photon_streams(data, corr)
             dataExtr1 = dataExtr
         t0 = dataExtr[:, 0]
@@ -361,7 +366,8 @@ def extract_atimes_for_corr(data, corr, split):
         corrname = corr
         crossCorr = True
     else:
-        print("Extracting photons")
+        if print_info:
+            print("Extracting photons")
         dataExtr = extract_spad_photon_streams(data, corr)
         t0 = dataExtr[:, 0]
         t1 = None

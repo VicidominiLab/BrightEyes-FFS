@@ -434,6 +434,10 @@ def plot_difflaw(taufit, w0, fig=None, ax=None, figsize=None, cmap='viridis', re
         If False, nothing is returned.
 
     """
+    
+    taufit = np.asarray(taufit)
+    w0 = np.asarray(w0)
+    
     fitresult = fit_curve(taufit, (w0)**2, 'linear', [1, 1], [1, 1], [-1e6, -1e6], [1e6, 1e6], savefig=0)
     n_points = len(taufit)
     
@@ -624,12 +628,12 @@ def plot_fida_hist(G, fitresults=None, xlim=[-0.5,28.5], ylim=[1e-6,1], yscale='
             # plot fit
             if fit == 'global':
                 residuals = fitresults.fun[:,i]
-                plot_fit = Gsingle[:,1]-residuals
+                plot_fit = Gsingle[0:len(residuals),1]-residuals
             else:
                 fitresult = fitresults[i]
-                plot_fit = Gsingle[:,1]-fitresult.fun
+                plot_fit = Gsingle[0:len(fitresult.fun),1]-fitresult.fun
             
-            plt.plot(Gsingle[:,0], plot_fit, linewidth=1.5, color=color_from_map(i, 0, len(list_of_g_out), cmap))
+            plt.plot(Gsingle[0:len(plot_fit),0], plot_fit, linewidth=1.5, color=color_from_map(i, 0, len(list_of_g_out), cmap))
     plt.legend()
     plt.xlabel('Counts per bin')
     plt.ylabel('Relative frequency')

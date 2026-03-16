@@ -81,7 +81,7 @@ def file_to_count(fname, datatype=np.uint16, print_info=False, n_points=-1, n_of
     return out, frames, y, x, time_per_pixel
 
 
-def file_to_fcs_count(fname, datatype=np.uint16, n_points=-1, n_offset=0, h5dataset=None):
+def file_to_fcs_count(fname, datatype=np.uint16, n_points=-1, n_offset=0, h5dataset=None, print_info=True):
     """
     Read a *.bin, *.tiff, *.h5 file and returns an array with the decoded count
     Args:
@@ -111,7 +111,8 @@ def file_to_fcs_count(fname, datatype=np.uint16, n_points=-1, n_offset=0, h5data
                     # flatten data to (t, c)
                     data = data[:]
                     data = data.reshape(-1, data.shape[-1])
-                print(np.shape(data))
+                if print_info:
+                    print(np.shape(data))
             if n_points == -1:
                 out = data[n_offset:]
             else:
@@ -177,11 +178,13 @@ def file_to_fcs_count(fname, datatype=np.uint16, n_points=-1, n_offset=0, h5data
         out = np.zeros((positions , 25), dtype = datatype)
         
         raw_pos = np.reshape(raw, (positions, 2))
-        print(f"data table: {raw_pos.shape}")
-    
-        print("Converting data to counts")
+        if print_info:
+            print(f"data table: {raw_pos.shape}")
+            print("Converting data to counts")
         matrix_to_count(raw_pos, out)
-        print("Done.")
+        
+        if print_info:
+            print("Done.")
 
     return out
 

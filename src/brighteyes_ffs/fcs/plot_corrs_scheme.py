@@ -18,7 +18,7 @@ def plot_correlations_microimage(detector, list_of_g, list_of_g_out=None, averag
     Parameters
     ----------
     detector : str
-        DESCRIPTION.
+        which detector, either '5x5', 'pda-23', 'airyscan'.
     list_of_g : list
         List of the correlations that are calculated.
     list_of_g_out : list of str, optional
@@ -27,6 +27,8 @@ def plot_correlations_microimage(detector, list_of_g, list_of_g_out=None, averag
         List of which correlations are averaged. The default is None.
     figsize : tuple, optional
         Figure size. The default is (5,5).
+    savefig : str
+        Path to the figure to save. If None, don't save the figure. Default None.
 
     Returns
     -------
