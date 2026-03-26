@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import numpy as np
-from ..fcs.fcs_polar import g2flow, g2polar
+from .fcs_polar import g2flow, g2polar
 from ..fcs_gui.timetrace_end import timetrace_end
 from ..tools.color_from_map import color_from_map
 from ..tools.fit_curve import fit_curve
@@ -151,7 +151,7 @@ def plot_atimeshist(raw_data, plot_fields='hist', fig=None, ax=None, figsize=(4,
         return fig, ax
     
 
-def plot_corrs(G, idx=None, fig=None, ax=None, figsize=None, cmap='viridis', return_fig=False):
+def plot_corrs(G, good_chunks_only=False, fig=None, ax=None, figsize=None, cmap='viridis', return_fig=False):
     """
     Plot correlations
 
@@ -159,8 +159,8 @@ def plot_corrs(G, idx=None, fig=None, ax=None, figsize=None, cmap='viridis', ret
     ----------
     G : Correlations object
         Correlations object from fcs2corr .
-    idx : list
-        List of good segments
+    good_chunks_only : boolean
+        Take into account list of good segments, stored in G.good_chunks
     fig : plt.figure(), optional
         Figure. If none, open new figure. The default is None.
     ax : axis, optional
@@ -193,20 +193,21 @@ def plot_corrs(G, idx=None, fig=None, ax=None, figsize=None, cmap='viridis', ret
         fig, ax = plt.subplots(1, n_corr, figsize=figsize)
 
     for i, corr in enumerate(list_of_g_out):
+        Gsingle, tau = G.get_corrs(corr)
         for j in range(n_chunks):
-            Gsingle = getattr(G, corr + '_chunk' + str(j))
-            if idx is not None:
+            if good_chunks_only:
                 # color according to removed or not
                 color = 'r'
-                if j in idx:
+                if j in G.good_chunks:
                     color = 'grey'
             else:
                 # random color
                 color = color_from_map(j, 0, n_chunks, cmap)
-            ax[i].scatter(Gsingle[1:,0], Gsingle[1:,1], s=4, color=color, label='chunk ' + str(j))
+            ax[i].scatter(tau[1:], Gsingle[1:,j], s=4, color=color, label='chunk ' + str(j))
         
-        if idx is not None:
-            ax[i].plot(Gsingle[1:,0], getattr(G, corr + '_averageX')[1:,1], 'k')
+        if good_chunks_only:
+            Garray, tau, Gstd = G.get_av_corrs([corr])
+            ax[i].plot(tau[1:], Garray[1:], 'k')
         ax[i].set_xscale('log')
         ax[i].set_title(corr)
         ax[i].set_xlabel('Lag time (s)')
@@ -217,7 +218,7 @@ def plot_corrs(G, idx=None, fig=None, ax=None, figsize=None, cmap='viridis', ret
         return fig, ax
 
 
-def plot_corrs_av(G, av='_averageX', fig=None, ax=None, figsize=None, cmap='tab20c', return_fig=False):
+def plot_corrs_av(G, good_chunks_only=True, fig=None, ax=None, figsize=None, cmap='tab20c', return_fig=False):
     """
     Plot average correlations
 
@@ -225,7 +226,7 @@ def plot_corrs_av(G, av='_averageX', fig=None, ax=None, figsize=None, cmap='tab2
     ----------
     G : Correlations object
         Correlations object from fcs2corr .
-    av : str
+    good_chunks_only : boolean
         Use '_average' for average over all segments or
         '_averageX' for average over good chunks only
     fig : plt.figure(), optional
@@ -245,10 +246,15 @@ def plot_corrs_av(G, av='_averageX', fig=None, ax=None, figsize=None, cmap='tab2
         If False, nothing is returned.
 
     """
-    base_names, max_filt = G.list_of_g_out_filters
+    n_filt = G.n_filters
     list_of_g_out = G.list_of_g_out
     
-    if max_filt is None:
+    if good_chunks_only:
+        idx = G.good_chunks
+    else:
+        idx = None
+    
+    if n_filt == 0:
         if figsize is None:
             figsize = (4,3)
         
@@ -256,8 +262,7 @@ def plot_corrs_av(G, av='_averageX', fig=None, ax=None, figsize=None, cmap='tab2
             fig, ax = plt.subplots(1, 1, figsize=figsize)
     
         for i, corr in enumerate(list_of_g_out):
-            Gsingle = getattr(G, corr + av)
-                
+            Gsingle = getattr(G, corr).average(idx)
             color = color_from_map(i, 0, len(list_of_g_out), cmap)
             ax.scatter(Gsingle[1:,0], Gsingle[1:,1], s=4, color=color, label=corr)
             ax.set_xscale('log')
@@ -267,9 +272,7 @@ def plot_corrs_av(G, av='_averageX', fig=None, ax=None, figsize=None, cmap='tab2
             plt.legend()
     else:
         # filters used
-        n_filt = max_filt + 1
-        filters = ["F" + str(i) for i in range(n_filt)]
-        filters[0] = ''
+        n_filt = n_filt + 1
         
         if figsize is None:
             figsize = (2*n_filt,3)
@@ -277,12 +280,11 @@ def plot_corrs_av(G, av='_averageX', fig=None, ax=None, figsize=None, cmap='tab2
         if fig is None or ax is None:
             fig, ax = plt.subplots(1, n_filt, figsize=figsize)
         
-        for f, filtername in enumerate(filters):
-            for i, corr in enumerate(base_names):
-                Gsingle = getattr(G, corr + filtername + av)
-                    
+        for f in range(n_filt):
+            for i, corr in enumerate(G.list_of_g_out):
+                Gsingle = getattr(G, corr).average(idx)
                 color = color_from_map(i, 0, len(list_of_g_out), cmap)
-                ax[f].scatter(Gsingle[1:,0], Gsingle[1:,1], s=4, color=color, label=corr)
+                ax[f].scatter(Gsingle[1:,0], Gsingle[1:,1+f], s=4, color=color, label=corr)
                 ax[f].set_xscale('log')
                 ax[f].set_xlabel('Lag time (s)')
                 ax[f].set_ylabel('G')
@@ -573,7 +575,7 @@ def plot_anisotropy_heat_map(corrs, fig=None, ax=None, figsize=None, cmap='PiYG'
         return fig, ax
 
 
-def plot_fida_hist(G, fitresults=None, xlim=[-0.5,28.5], ylim=[1e-6,1], yscale='log', fig=None, ax=None, figsize=None, cmap='tab20c', return_fig=False):
+def plot_fida_hist(G, good_chunks_only=True, fitresults=None, xlim=[-0.5,28.5], ylim=[1e-6,1], yscale='log', fig=None, ax=None, figsize=None, cmap='tab20c', return_fig=False):
     """
     Plot FIDA histograms with/without fit
 
@@ -609,6 +611,12 @@ def plot_fida_hist(G, fitresults=None, xlim=[-0.5,28.5], ylim=[1e-6,1], yscale='
     """
     list_of_g_out = G.list_of_g_out
     
+    if good_chunks_only or fitresults is not None:
+        # when fitted, always use good chunks
+        idx = G.good_chunks
+    else:
+        idx = None
+    
     try:
         temp = fitresults.fun[:,0]
         fit = 'global'
@@ -622,7 +630,7 @@ def plot_fida_hist(G, fitresults=None, xlim=[-0.5,28.5], ylim=[1e-6,1], yscale='
         fig, ax = plt.subplots(1, 1, figsize=figsize)
         
     for i, corr in enumerate(list_of_g_out):
-        Gsingle = getattr(G, corr + '_averageX')
+        Gsingle = getattr(G, corr).average(idx)
         plt.bar(Gsingle[0:,0], Gsingle[0:,1], label=corr, color=color_from_map(i, 0, len(list_of_g_out), cmap), alpha=0.4)
         if fitresults is not None:
             # plot fit

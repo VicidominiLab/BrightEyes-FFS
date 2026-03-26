@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "brighteyes-ffs"
-version = "0.0.54"
+version = "0.1.3"
 authors = [
   { name="Eli Slenders", email="eli.slenders@iit.it" }
 ]
@@ -41,5 +41,13 @@ classifiers = [
     "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Operating System :: OS Independent",
 ]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["brighteyes_ffs*"]
+
 [project.urls]
 "Homepage" = "https://github.com/VicidominiLab/brighteyes-ffs"

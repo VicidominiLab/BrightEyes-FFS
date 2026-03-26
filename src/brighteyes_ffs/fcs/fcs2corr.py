@@ -30,24 +30,55 @@ The object contains fields such as G.central_average, containing a 2D array
 with the autocorrelation for the central element (averaged over all chunks of data)
 """
 
+
+class Correlations_chunks:
+    def __init__(self, corrs_chunks):
+        self.chunks = corrs_chunks
+    
+    @property
+    def num_chunks(self):
+        return np.shape(self.chunks)[0]
+    
+    def average(self, good_chunks_idx=None):
+        n_chunks = np.shape(self.chunks)[0]
+        if good_chunks_idx is None:
+            good_chunks = [True for i in range(n_chunks)]
+        else:
+            good_chunks = [i in set(good_chunks_idx) for i in range(n_chunks)]
+        g_mean = np.mean(self.chunks[good_chunks], 0)
+        g_std = np.std(self.chunks[good_chunks], 0)[...,1:]
+        # tau - G0 - Gfilt1 - Gfilt2 - G0_std - Gfilt1_std - Gfilt2_std
+        return np.column_stack((g_mean, g_std))
+
 class Correlations:
     def __init__(self):
-        pass
+        self.good_chunks = None
+        self.dwell_time = None
+        self.list_of_g_out = []
     
-    def get_av_corrs(self, corrs, av='_averageX'):
+    def add_corr_chunks(self, name, corrs_chunks):
+        setattr(self, name, Correlations_chunks(corrs_chunks))
+    
+    def get_av_corrs(self, corrs, good_chunks_only=True):
         # return all average correlations
         # e.g. G.get_av_corrs(['central', 'sum3', 'sum5']) returns
         # G.central_averageX, G.sum3_averageX, etc. in a single array
-        g_shape = np.shape(getattr(self, corrs[0] + av))
-        Garray = np.zeros((g_shape[0],len(corrs)))
-        Gstd = np.zeros((g_shape[0],len(corrs))) + 1
+        g_shape = np.shape(getattr(self, corrs[0]).average())
+        Garray = np.zeros((g_shape[0],len(corrs), self.n_filters+1))
+        Gstd = np.zeros((g_shape[0],len(corrs), self.n_filters+1)) + 1 # default value 1
         for i, corr in enumerate(corrs):
-            Garray[:,i] = getattr(self, corr + av)[:,1]
-            try:
-                Gstd[:,i] = getattr(self, corr + av)[:,2]
-            except:
-                pass
-        tau = getattr(self, corr + av)[:,0]
+            if good_chunks_only:
+                good_chunks_idx = self.good_chunks
+                if good_chunks_idx is None:
+                    raise ValueError("good_chunks cannot be None unless good_chunks_only=False")
+            else:
+                good_chunks_idx = None
+            av_corr =  getattr(self, corr).average(good_chunks_idx)
+            tau = av_corr[:,0]
+            for f in range(self.n_filters+1):
+                Garray[:,i,f] = av_corr[:,1+f]
+                Gstd[:,i,f] = np.clip(av_corr[:,2+self.n_filters+f], 1e-20, None)
+                
         Garray = np.squeeze(Garray)
         Gstd = np.squeeze(Gstd)
         return Garray, tau, Gstd
@@ -55,20 +86,9 @@ class Correlations:
     def get_corrs(self, corrname):
         # return all correlations starting with corrname (except average)
         # e.g. G.sum3_chunk0, G.sum3_chunk1, etc.
-        keylist = list(self.__dict__.keys())
-        good_keys = []
-        for ind, key in enumerate(keylist):
-            if key.startswith(corrname + '_chunk'):
-                good_keys.append(key)
-        
-        if len(good_keys) == 0:
-            return None, None
-        
-        g_shape = np.shape(getattr(self, good_keys[0]))
-        Garray = np.zeros((g_shape[0],len(good_keys)))
-        for i in range(len(good_keys)):
-            Garray[:,i] = getattr(self, corrname + '_chunk' + str(i))[:,1]
-        tau = getattr(self, corrname + '_chunk' + str(i))[:,0]
+        G_chunks = getattr(self, corrname).chunks
+        Garray = np.transpose(G_chunks[...,1])
+        tau = G_chunks[0,:,0]
         return Garray, tau
 
     @property
@@ -76,87 +96,21 @@ class Correlations:
         """
         return number of chunks
         """
-        Gfields = list(self.__dict__.keys())
-        t = [Gfields[i].split("_chunk")[0] for i in range(len(Gfields))]
-        t = list(dict.fromkeys(t))
-        try:
-            t.remove("dwellTime")
-        except:
-            pass
-        for field in t:
-            avList = [i for i in Gfields if i.startswith(field + '_chunk')]
-            if len(avList) > 0:
-                return len(avList)
+        corr = getattr(self, self.list_of_g_out[0]) # take random corr
+        return corr.num_chunks
     
     @property
-    def list_of_g_out(self):
-        """
-        return names of output correlations, e.g. ['central', 'sum7', 'sum19']
-        """
-        listOfCorr = list(self.__dict__.keys())
-        listOfCorr2 = []
-        
-        for corr in listOfCorr:
-            if 'average' not in corr and 'chunk' in corr and 'chunksOff' not in corr and 'chunks_off' not in corr:
-                pos = corr.find('_chunk')
-                if len(corr[0:pos]) > 0:
-                    listOfCorr2.append(corr[0:pos])
-        
-        # remove duplicates
-        listOfCorr2 = list(dict.fromkeys(listOfCorr2))
-        return listOfCorr2
-    
-    @property
-    def list_of_g_out_filters(self):
+    def n_filters(self):
         """
         Returns:
-          - unique base names, where a trailing 'F<number>' is ignored
-          - the maximum trailing F tag as a string like 'F2' (or None if no F tags)
+          the number of lifetime based filters used in the correlations
+          e.g. fluorescence filter, dark counts filter, etc.
+          typically 0 (if unfiltered only)
         """
-        names = self.list_of_g_out
-        
-        base_pattern = re.compile(r"^(.*?)(?:F(\d+))?$")  # base + optional trailing F#
-        bases: List[str] = []
-        seen = set()
-        max_f = -1
-    
-        for s in names:
-            m = base_pattern.match(s)
-            if not m:
-                continue
-            base, fnum = m.group(1), m.group(2)
-    
-            if base not in seen:
-                seen.add(base)
-                bases.append(base)
-    
-            if fnum is not None:
-                max_f = max(max_f, int(fnum))
-    
-        max_f_tag = max_f if max_f >= 0 else None
-        return bases, max_f_tag
-    
-    def average_chunks(self, listOfChunks):
-        """
-        identical to G = fcs_av_chunks(G, listOfChunks)
-        """
-        listOfCorr2 = self.list_of_g_out
-        
-        for corr in listOfCorr2:
-            Gtemp = getattr(self, corr + '_chunk0') * 0
-            GtempSquared = getattr(self, corr + '_chunk0') * 0
-            for chunk in listOfChunks:
-                Gtemp += getattr(self, corr + '_chunk' + str(chunk))
-                GtempSquared += getattr(self, corr + '_chunk' + str(chunk))**2
-            
-            Gtemp /= len(listOfChunks)
-            Gstd = np.sqrt(np.clip(GtempSquared / len(listOfChunks) - Gtemp**2, 0, None))
-            
-            Gtot = np.zeros((np.shape(Gtemp)[0], np.shape(Gtemp)[1] + 1))
-            Gtot[:, 0:-1] = Gtemp # [time, average]
-            Gtot[:, -1] = Gstd[:,1] # standard deviation
-            
-            setattr(self, corr + '_averageX', Gtot)
+        corrname = self.list_of_g_out[0] # take random correlation
+        Garray = getattr(self, corrname).chunks
+        n_filt = np.shape(Garray)[-1] - 2 # first column tau, second unfiltered
+        return n_filt
 
     
 def fcs_load_and_corr_split(fname, list_of_g=['central', 'sum3', 'sum5'], accuracy=16, split=10, binsize=1, time_trace=False, metadata=None, root=0, list_of_g_out=None, averaging=None, algorithm='multipletau', print_info=True):
@@ -233,8 +187,13 @@ def fcs_load_and_corr_split(fname, list_of_g=['central', 'sum3', 'sum5'], accura
         return [None, None]
     
     G = Correlations()
-    G.dwellTime = dwellTime
+    G.dwell_time = dwellTime
+    G.list_of_g_out = []
+    
     chunkSize = int(np.floor(split / dwellTime))
+    
+    corrs_chunks = []
+    
     for chunk in range(N):
         # --------------------- CALCULATE CORRELATIONS SINGLE CHUNK ---------------------
         if root != 0:
@@ -260,46 +219,42 @@ def fcs_load_and_corr_split(fname, list_of_g=['central', 'sum3', 'sum5'], accura
             if print_info:
                 print('     --> ' + str(j) + ": ", end = '')
             # ------------------ CHUNK ------------------
+            if list_of_g_out is not None and 'crossAll' not in list_of_g:
+                attrname = [list_of_g_out[indk]]
+                indk += 1
+            elif 'crossAll' in list_of_g:
+                attrname = list_of_g_out
+            else:
+                attrname = None
             newList = [j]
-            Gsplit = fcs2corr(data, 1e6*dwellTime, newList, accuracy, binsize, averaging=averaging, list_of_g_out=list_of_g_out, algorithm=algorithm, print_info=print_info)
-            GsplitList = list(Gsplit.__dict__.keys())
-            for k in GsplitList:
-                if k.find('dwellTime') == -1:
-                    attrname = k
-                    if list_of_g_out is not None:
-                        attrname = list_of_g_out[indk]
-                        indk += 1
-                    if not np.isnan(getattr(Gsplit, k)).any():
-                        setattr(G, attrname + '_chunk' + str(chunk), getattr(Gsplit, k))
-    
-    # ---------- CALCULATE AVERAGE CORRELATION OF ALL CHUNKS ----------
-    # Get list of "root" names, i.e. without "_chunk"
-    Gfields = list(G.__dict__.keys())
-    t = [Gfields[i].split("_chunk")[0] for i in range(len(Gfields))]
-    t = list(dict.fromkeys(t))
-    t.remove("dwellTime")
-    # average over chunks
-    for field in t:
-        avList = [i for i in Gfields if i.startswith(field + '_chunk')]
-        # check if all elements have same dimension
-        Ntau = [len(getattr(G, i)) for i in avList]
-        avList2 = [avList[i] for i in range(len(avList)) if Ntau[i] == Ntau[0]]
-        
-        Gtemp = getattr(G, avList2[0]) * 0
-        GtempSquared = getattr(G, avList2[0])**2 * 0
-        for chunk in avList2:
-            Gtemp += getattr(G, chunk)
-            GtempSquared += getattr(G, chunk)**2
-        
-        Gtemp /= len(avList2)
-        Gstd = np.sqrt(np.clip(GtempSquared / len(avList2) - Gtemp**2, 0, None))
-        
-        Gtot = np.zeros((np.shape(Gtemp)[0], np.shape(Gtemp)[1] + 1))
-        Gtot[:, 0:-1] = Gtemp # [time, average]
-        Gtot[:, -1] = Gstd[:,1] # standard deviation
-        
-        setattr(G, str(field) + '_average', Gtot)   
-    
+            Gsplit = fcs2corr(data, 1e6*dwellTime, newList, accuracy, binsize, averaging=averaging, list_of_g_out=attrname, algorithm=algorithm, print_info=print_info)
+            attrnames = Gsplit.list_of_g_out
+            
+            # crossAll
+            if 'crossAll' in newList:
+                G.list_of_g_out = attrnames
+                for attr_ind, attrname in enumerate(attrnames):
+                    Gtemp = getattr(Gsplit, attrnames[attr_ind])
+                
+                    if chunk == 0:
+                        corrs_chunks.append(Correlations_chunks(np.zeros((N, *Gtemp.shape))))
+                        
+                    if not np.isnan(Gtemp).any():
+                        corrs_chunks[attr_ind].chunks[chunk] = Gtemp
+            
+            # not crossAll
+            else:
+                Gtemp = getattr(Gsplit, attrnames[0])
+                if chunk == 0:
+                    corrs_chunks.append(Correlations_chunks(np.zeros((N, *Gtemp.shape))))
+                    G.list_of_g_out.append(attrnames[0])
+                
+                if not np.isnan(Gtemp).any():
+                    corrs_chunks[ind].chunks[chunk] = Gtemp
+                    
+    for ind, name in enumerate(G.list_of_g_out):
+        G.add_corr_chunks(name, corrs_chunks[ind].chunks)
+                    
     if time_trace == True:
         data = timetraceAll
 
@@ -340,6 +295,9 @@ def fcs2corr(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard
     # dwell time
     G.dwellTime = dwell_time
     
+    # output names (e.g. G.central, G.sum3, etc.)
+    G.list_of_g_out = []
+    
     # list_of_g_out index
     if list_of_g_out is not None:
         list_of_g_out_enum = enumerate(list_of_g_out)
@@ -353,6 +311,7 @@ def fcs2corr(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard
         else:
             attrname = 'det0'
         setattr(G, attrname, correlate(data, data, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
+        G.list_of_g_out.append(attrname)
         return G
 
     num_ch = np.shape(data)[1]
@@ -369,6 +328,7 @@ def fcs2corr(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard
                 print('Calculating autocorrelation of detector element ' + str(i))
             dataSingle = extract_spad_data(data, i)
             setattr(G, attrname, correlate(dataSingle, dataSingle, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
+            G.list_of_g_out.append(attrname)
 
         elif i[0] == 'x':
             # ----------------------------------------------------------------
@@ -386,6 +346,7 @@ def fcs2corr(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard
                 print('Calculating cross-correlation detector elements ' + str(det0) + 'x' + str(det1))
             Gtemp = correlate(dataSingle0, dataSingle1, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
             setattr(G, attrname, Gtemp)
+            G.list_of_g_out.append(attrname)
 
         elif i[0] == "C":
             # ----------------------------------------------------------------
@@ -407,6 +368,7 @@ def fcs2corr(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard
                 dataSum1 = extract_spad_data(data, i)
                 dataSum2 = dataSum1
             setattr(G, attrname, correlate(dataSum1, dataSum2, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
+            G.list_of_g_out.append(attrname)
             
         elif i == "crossCenter":
             # crosscorrelation center element with L, R, T, B
@@ -417,6 +379,7 @@ def fcs2corr(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard
                 data2 = extract_spad_data(data, j)
                 Gtemp = correlate(dataCenter, data2, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
                 setattr(G, 'det12x' + str(j), Gtemp)
+                G.list_of_g_out.append('det12x' + str(j))
         
         elif i == 'singleElement':
             # autocorrelation single element
@@ -434,6 +397,7 @@ def fcs2corr(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard
                     print('Autocorrelation element ' + str(ch1))
                 Gtemp = correlate(data1, data1, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
                 G.auto = Gtemp
+                G.list_of_g_out.append('auto')
         
         elif i == "2MPD":
             # crosscorrelation two elements
@@ -462,18 +426,22 @@ def fcs2corr(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard
                     print('Cross correlation elements ' + str(ch1) + ' and ' + str(ch2))
                 Gtemp = correlate(data1, data2, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
                 G.cross12 = Gtemp
+                G.list_of_g_out.append('cross12')
                 if print_info:
                     print('Cross correlation elements ' + str(ch2) + ' and ' + str(ch1))
                 Gtemp = correlate(data2, data1, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
                 G.cross21 = Gtemp
+                G.list_of_g_out.append('cross21')
                 if print_info:
                     print('Autocorrelation element ' + str(ch1))
                 Gtemp = correlate(data1, data1, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
                 G.auto1 = Gtemp
+                G.list_of_g_out.append('auto1')
                 if print_info:
                     print('Autocorrelation element ' + str(ch2))
                 Gtemp = correlate(data2, data2, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
                 G.auto2 = Gtemp
+                G.list_of_g_out.append('auto2')
                 
         elif i == "crossAll":
             # crosscorrelation every element with every other element
@@ -486,6 +454,7 @@ def fcs2corr(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard
                         for k in range(num_ch):
                             Gtemp = np.column_stack((np.squeeze(Gtimes), Gall[:, j, k]))
                             setattr(G, 'det' + str(j) + 'x' + str(k), Gtemp)
+                            G.list_of_g_out.append('det' + str(j) + 'x' + str(k))
                 else:
                     # average over multiple cross-correlations
                     if averaging == 'default':
@@ -504,6 +473,7 @@ def fcs2corr(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard
                             Gtemp[:,1] += Gall[:, singleAv[2*ind_av], singleAv[2*ind_av+1]]
                         Gtemp[:,1] /= Nav
                         setattr(G, els[el], Gtemp)
+                        G.list_of_g_out.append(els[el])
                         
             else:
                 for j in range(num_ch):
@@ -514,6 +484,7 @@ def fcs2corr(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard
                             print('Calculating crosscorrelation det' + str(j) + ' and det' + str(k))
                         Gtemp = correlate(data1, data2, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
                         setattr(G, 'det' + str(j) + 'x' + str(k), Gtemp)
+                        G.list_of_g_out.append('det' + str(j) + 'x' + str(k))
         
         elif i == "autoSpatial":
             # number of time points
@@ -591,6 +562,7 @@ def fcs2corr(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard
                 print('Calculating autocorrelation ' + str(i))
             data_kw = extract_spad_data(data, i)
             setattr(G, attrname, correlate(data_kw, data_kw, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
+            G.list_of_g_out.append(attrname)
             
     return G
 
@@ -678,7 +650,7 @@ def fcs2corrsplit(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chess
         G = fcs2corr(data, dwell_time, list_of_g, accuracy)
     else:
         G = Correlations()
-        G.dwellTime = dwell_time
+        G.dwell_time = dwell_time
         N = int(np.size(data, 0))
         chunkSize = int(np.floor(N / split))
         for j in list_of_g:
@@ -773,7 +745,7 @@ def fcs_sparse_matrices(fname, accuracy=16, split=10, time_trace=False, return_o
     N = int(np.floor(duration / split)) # number of chunks
 
     G = Correlations()
-    G.dwellTime = dwellTime
+    G.dwell_time = dwellTime
     chunkSize = int(np.floor( split/ dwellTime))
     Gcorrs = []
     
@@ -1194,47 +1166,34 @@ def fcs_crosscenter_av(G, returnField='_averageX', returnObj = True):
 
     """
     
-    try:
-        tau = G.det12x12_average[:,0]
-    except:
-        tau = G.det12x12_chunk0[:,0]
+    
+    tau = G.det12x12.average()[:,0]
     G.crossCenterAv = np.zeros((len(tau), 6))
     
+    if returnField == '_averageX':
+        # good chunks only
+        good_chunks = G.good_chunks
+    else:
+        good_chunks = None
+    
     # average autocorrelation center element
-    try:
-        G.crossCenterAv[:,0] = getattr(G, 'det12x12' + returnField)[:,1]
-    except:
-        G.crossCenterAv[:,0] = getattr(G, 'det12x12' + '_average')[:,1]
+    G.crossCenterAv[:,0] = G.det12x12.average(good_chunks)[:,1]
     
     # average pair-correlations 4 elements located at distance 1 from center
-    try:
-        G.crossCenterAv[:,1] = np.mean(np.transpose(np.array([getattr(G, 'det12x' + str(det) + returnField)[:,1] for det in [7, 11, 13, 17]])), 1)
-    except:
-        G.crossCenterAv[:,1] = np.mean(np.transpose(np.array([getattr(G, 'det12x' + str(det) + '_average')[:,1] for det in [7, 11, 13, 17]])), 1)
+    G.crossCenterAv[:,1] = np.mean(np.transpose(np.array([getattr(G, 'det12x' + str(det)).average(good_chunks)[:,1] for det in [7, 11, 13, 17]])), 1)
     
     # average pair-correlations 4 elements located at distance sqrt(2) from center
-    try:
-        G.crossCenterAv[:,2] = np.mean(np.transpose(np.array([getattr(G, 'det12x' + str(det) + returnField)[:,1] for det in [6, 8, 16, 18]])), 1)
-    except:
-        G.crossCenterAv[:,2] = np.mean(np.transpose(np.array([getattr(G, 'det12x' + str(det) + '_average')[:,1] for det in [6, 8, 16, 18]])), 1)
+    
+    G.crossCenterAv[:,2] = np.mean(np.transpose(np.array([getattr(G, 'det12x' + str(det)).average(good_chunks)[:,1] for det in [6, 8, 16, 18]])), 1)
     
     # average pair-correlation 4 elements located at distance 2 from center
-    try:
-        G.crossCenterAv[:,3] = np.mean(np.transpose(np.array([getattr(G, 'det12x' + str(det) + returnField)[:,1] for det in [2, 10, 14, 22]])), 1)
-    except:
-        G.crossCenterAv[:,3] = np.mean(np.transpose(np.array([getattr(G, 'det12x' + str(det) + '_average')[:,1] for det in [2, 10, 14, 22]])), 1)
+    G.crossCenterAv[:,3] = np.mean(np.transpose(np.array([getattr(G, 'det12x' + str(det)).average(good_chunks)[:,1] for det in [2, 10, 14, 22]])), 1)
     
     # average pair-correlation 8 elements located at distance sqrt(5) from center
-    try:
-        G.crossCenterAv[:,4] = np.mean(np.transpose(np.array([getattr(G, 'det12x' + str(det) + returnField)[:,1] for det in [1, 3, 5, 9, 15, 19, 21, 23]])), 1)
-    except:
-        G.crossCenterAv[:,4] = np.mean(np.transpose(np.array([getattr(G, 'det12x' + str(det) + '_average')[:,1] for det in [1, 3, 5, 9, 15, 19, 21, 23]])), 1)
+    G.crossCenterAv[:,4] = np.mean(np.transpose(np.array([getattr(G, 'det12x' + str(det)).average(good_chunks)[:,1] for det in [1, 3, 5, 9, 15, 19, 21, 23]])), 1)
     
     # average pair-correlation 4 elements located at distance sqrt(8) from center
-    try:
-        G.crossCenterAv[:,5] = np.mean(np.transpose(np.array([getattr(G, 'det12x' + str(det) + returnField)[:,1] for det in [0, 4, 20, 24]])), 1)
-    except:
-        G.crossCenterAv[:,5] = np.mean(np.transpose(np.array([getattr(G, 'det12x' + str(det) + '_average')[:,1] for det in [0, 4, 20, 24]])), 1)
+    G.crossCenterAv[:,5] = np.mean(np.transpose(np.array([getattr(G, 'det12x' + str(det)).average(good_chunks)[:,1] for det in [0, 4, 20, 24]])), 1)
     
     if returnObj:
         return G
@@ -1561,3 +1520,22 @@ def corrs2average_for_stics(det_size=5, pixelsOff=[]):
     average = [[names_final[i], avListStr[i]] for i in range(len(names))]
     
     return average
+
+
+def list_of_g_out_v1p1(G):
+    listOfCorr = list(G.__dict__.keys())
+    listOfCorr2 = []
+    
+    for corr in listOfCorr:
+        if 'average' not in corr and 'chunk' in corr and 'chunksOff' not in corr and 'chunks_off' not in corr and 'good_chunks' not in corr:
+            pos = corr.find('_chunk')
+            if len(corr[0:pos]) > 0:
+                listOfCorr2.append(corr[0:pos])
+    
+    n_chunks = len(listOfCorr2)
+    
+    # remove duplicates
+    listOfCorr2 = list(dict.fromkeys(listOfCorr2))
+    n_chunks /= len(listOfCorr2)
+    
+    return listOfCorr2, int(n_chunks)

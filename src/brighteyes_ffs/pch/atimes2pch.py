@@ -1,5 +1,5 @@
 from ..fcs.atimes_data import atimes_data_2_duration, load_atimes_data, atimes_data_2_channels
-from ..fcs.fcs2corr import Correlations
+from ..fcs.fcs2corr import Correlations, Correlations_chunks
 import numpy as np
 from ..fcs.extract_spad_photon_streams import extract_spad_photon_streams
 
@@ -71,6 +71,8 @@ def atimes_file_2_pch(fname, list_of_pch=['central', 'sum3', 'sum5'], split=10, 
 def atimes_2_pch_all(data, list_of_pch, split, bin_time, normalize=True, list_of_pch_out=None, max_k=30):
    
     G = Correlations()
+    corrs_chunks = []
+    G.list_of_g_out = []
     
     # CALCULATE CORRELATIONS
     try:
@@ -102,17 +104,18 @@ def atimes_2_pch_all(data, list_of_pch, split, bin_time, normalize=True, list_of
         for chunk in range(n_chunks):
             hist = arrival_times_to_pch(t0, bin_time, chunk, split, normalize, max_k)
             if list_of_pch_out is None:
-                corrname_out = corrname + "F" + str(idx_corr)
+                corrname_out = corrname
             else:
                 corrname_out = list_of_pch_out[idx_corr]
-                
-            setattr(G, corrname_out + '_chunk' + str(chunk), hist)
-   
-        # average over all chunks
-        listOfFields = list(G.__dict__.keys())
-        listOfFields = [i for i in listOfFields if i.startswith(corrname_out + "_chunk")]
-        Gav = sum(getattr(G, i) for i in listOfFields) / len(listOfFields)
-        setattr(G, corrname_out + '_average', Gav)
+        
+            if chunk == 0:
+                # make one object for each correlation, with all chunks and all filters
+                corrs_chunks.append(Correlations_chunks(np.zeros((n_chunks, np.shape(hist)[0], 2))))
+                G.list_of_g_out.append(corrname_out)
+            
+            corrs_chunks[idx_corr].chunks[chunk,:,:] = hist
+        
+        G.add_corr_chunks(corrname_out, corrs_chunks[idx_corr].chunks)
     
     return G
     

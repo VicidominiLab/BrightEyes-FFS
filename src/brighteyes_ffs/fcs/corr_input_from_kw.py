@@ -142,9 +142,9 @@ def get_corr_input(corrtype, det):
     # -------------------- All cross-correlations with symmetry averaging --------------------
     if corrtype in ['all cross-correlations', 'cross-correlation ffs', 'xcorr', 'xcorrs', 'crossall']:
         if det in det_GI5:
-            list_of_g_out = ['V-4_H0', 'V-3_H-1', 'V-3_H0', 'V-3_H1', 'V-2_H-2', 'V-2_H-1', 'V-2_H0', 'V-2_H1', 'V-2_H2', 'V-1_H-3', 'V-1_H-2', 'V-1_H-1', 'V-1_H0', 'V-1_H1',
-            'V-1_H2', 'V-1_H3', 'V0_H-4', 'V0_H-3', 'V0_H-2', 'V0_H-1', 'V0_H0', 'V0_H1', 'V0_H2', 'V0_H3', 'V0_H4', 'V1_H-3', 'V1_H-2', 'V1_H-1', 'V1_H0', 'V1_H1', 'V1_H2',
-            'V1_H3', 'V2_H-2', 'V2_H-1', 'V2_H0', 'V2_H1', 'V2_H2', 'V3_H-1', 'V3_H0', 'V3_H1', 'V4_H0']
+            list_of_g_out = ['Vn4_H0', 'Vn3_Hn1', 'Vn3_H0', 'Vn3_H1', 'Vn2_Hn2', 'Vn2_Hn1', 'Vn2_H0', 'Vn2_H1', 'Vn2_H2', 'Vn1_Hn3', 'Vn1_Hn2', 'Vn1_Hn1', 'Vn1_H0', 'Vn1_H1',
+            'Vn1_H2', 'Vn1_H3', 'V0_Hn4', 'V0_Hn3', 'V0_Hn2', 'V0_Hn1', 'V0_H0', 'V0_H1', 'V0_H2', 'V0_H3', 'V0_H4', 'V1_Hn3', 'V1_Hn2', 'V1_Hn1', 'V1_H0', 'V1_H1', 'V1_H2',
+            'V1_H3', 'V2_Hn2', 'V2_Hn1', 'V2_H0', 'V2_H1', 'V2_H2', 'V3_Hn1', 'V3_H0', 'V3_H1', 'V4_H0']
             list_of_g = ['crossAll']
             averaging = ['22x2', '18x2+22x6', '17x2+22x7', '16x2+22x8', '14x2+18x6+22x10', '13x2+17x6+18x7+22x11', '12x2+16x6+17x7+18x8+22x12', '11x2+16x7+17x8+22x13',
                          '10x2+16x8+22x14', '14x6+18x10', '13x6+14x7+17x10+18x11', '8x2+12x6+13x7+14x8+16x10+17x11+18x12+22x16', '7x2+11x6+12x7+13x8+16x11+17x12+18x13+22x17',

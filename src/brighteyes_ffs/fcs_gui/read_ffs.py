@@ -157,7 +157,7 @@ def read_g_from_ffs(libfile, read='active'):
     elements = analysis.settings.elements # central, sum3x3, sum5x5
     Ncurves = len(elements)
     
-    Gsingle = analysis.get_corr(elements[0])
+    Gsingle = analysis.get_corr(elements[0]).average()
     N = len(Gsingle)
     
     G = np.zeros((N, Ncurves))
@@ -167,7 +167,7 @@ def read_g_from_ffs(libfile, read='active'):
     fitFound = False
     
     for i in range(Ncurves):
-        Gsingle = analysis.get_corr(elements[i])
+        Gsingle = analysis.get_corr(elements[i]).average(analysis.corrs.good_chunks)
         tau = analysis.get_corr()[:,0]
         if 'crossCenterAv' in elements:
             G = Gsingle

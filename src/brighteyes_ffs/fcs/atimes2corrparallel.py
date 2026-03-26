@@ -2,7 +2,7 @@ import multiprocessing
 import re
 from joblib import Parallel, delayed
 from .atimes2corr import atimes_2_corr
-from .fcs2corr import Correlations
+from .fcs2corr import Correlations, Correlations_chunks
 from .atimes_data import atimes_data_2_duration, load_atimes_data, atimes_data_2_channels, atimes_data_attr_2_ch
 import numpy as np
 from .extract_spad_photon_streams import extract_spad_photon_streams
@@ -51,7 +51,7 @@ def atimes_file_2_corr(fname, list_of_g=['central', 'sum3', 'sum5'], accuracy=16
         The full time trace is compressed into 1000 points per channel
 
     """
-    if list_of_g_out is None:
+    if list_of_g_out is None and 'crossAll' not in list_of_g:
         list_of_g_out = list_of_g
     
     raw_data = load_atimes_data(fname, channels='auto', perform_calib=False)
@@ -72,7 +72,7 @@ def atimes_file_2_corr(fname, list_of_g=['central', 'sum3', 'sum5'], accuracy=16
         data[:, idet] = Itrace[0:] #/ (timeBins[2] - timeBins[1]) / 1e3
     
     G = atimes_2_corrs_parallel(raw_data, list_of_g, accuracy=accuracy, taumax="auto", perform_coarsening=True, logtau=True, root=root, split=split, averaging=averaging, list_of_g_out=list_of_g_out, parallel_prefer=parallel_prefer, min_step=min_step, print_info=print_info)
-    G.dwellTime = 1e-12 # timeBins[2] - timeBins[1]
+    G.dwell_time = 1e-12 # timeBins[2] - timeBins[1]
     
     if time_trace:
         return G, data
@@ -158,18 +158,29 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
     c0_all = []
     c1_all = []
     
+    corrs_chunks = []
+    G.list_of_g_out = []
+    
     for idx_corr, corr in enumerate(list_of_g):
         if root != 0:
             root.progress = idx_corr / len(list_of_g)
         if print_info:
             print("Calculating correlation " + str(corr))
         
+        if list_of_g_out is not None and not calc_all_xcorr and averaging is None:
+            attrname = list_of_g_out[idx_corr]
+            #idx_corr += 1
+        elif calc_all_xcorr or averaging is not None:
+            attrname = None
+        else:
+            attrname = None
+        
         # extract atimes t0, t1 and some other data
         t0, t1, corrname, crossCorr, dataExtr, dataExtr1, c0, c1, duration, n_chunks, data_macrotime = extract_atimes_for_corr(data, corr, split, print_info=print_info)
         
         # CALCULATE CORRELATIONS
         # go over all filters
-        num_filters = np.shape(dataExtr)[1] - 1
+        num_filters = np.shape(dataExtr)[1] - 1 # including unfiltered
         for j in range(num_filters):
             if j > 0:
                 if print_info:
@@ -198,47 +209,23 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
                     g_temp = Processed_list[chunk]
                     g_times = g_temp[:,0]
                     g_cross_all[j, chunk, :, int(c0), int(c1)] = g_temp[:,1]
+                    
             else:
                 for chunk in range(n_chunks):
-                    if list_of_g_out is None:
-                        corrname_out = corrname
-                    else:
-                        corrname_out = list_of_g_out[idx_corr]
-                    if j > 0:
-                        corrname_out += "F" + str(j)
-                    setattr(G, corrname_out + '_chunk' + str(chunk), Processed_list[chunk])
-           
-                # average over all chunks
-                Gall_chunks, tau = G.get_corrs(corrname_out)
-                Gav = np.mean(Gall_chunks, 1)
-                Gstd = np.std(Gall_chunks, 1)
-                setattr(G, corrname_out + '_average', np.column_stack((tau, Gav, Gstd)))
+                    g_temp = Processed_list[chunk]
+                    if chunk == 0 and j == 0:
+                        # make one object for each correlation, with all chunks and all filters
+                        corrs_chunks.append(Correlations_chunks(np.zeros((n_chunks, np.shape(g_temp)[0], 1+num_filters))))
+                        G.list_of_g_out.append(attrname)
+                        
+                    if not np.isnan(g_temp).any():
+                        corrs_chunks[idx_corr].chunks[chunk,:,0] = g_temp[:,0] # tau
+                        corrs_chunks[idx_corr].chunks[chunk,:,j+1] = g_temp[:,1] # G_unfiltered, G_filtered
+                    
+                G.add_corr_chunks(attrname, corrs_chunks[idx_corr].chunks)
     
     if calc_all_xcorr or averaging is not None:
-        if averaging is None:
-            for c in range(len(c0_all)):
-                for l in range(n_chunks):
-                    g_temp = np.column_stack((np.squeeze(g_times), g_cross_all[0,l,:,int(c0_all[c]),int(c1_all[c])]))
-                    setattr(G, 'det' + c0_all[c] + 'x' + c1_all[c] + '_chunk' + str(l), g_temp)
-            
-        else:
-            # average over multiple cross-correlations
-            avs = averaging
-            els = list_of_g_out
-            for l in range(n_chunks):
-                for el, av in enumerate(avs):
-                    singleAv = [int(ch_nr) for ch_nr in re.findall(r'\d+', av)]
-                    Nav = int(len(singleAv) / 2)
-                    g_temp = np.zeros((len(g_times), 2))
-                    g_temp[:,0] = np.squeeze(g_times)
-                    for ind_av in range(Nav):
-                        g_temp[:,1] += g_cross_all[0, l, :, singleAv[2*ind_av], singleAv[2*ind_av+1]]
-                    g_temp[:,1] /= Nav
-                    setattr(G, els[el] + '_chunk' + str(l), g_temp)
-    
-    # ---------- CALCULATE AVERAGE CORRELATION OF ALL CHUNKS ----------
-    if calc_all_xcorr or averaging is not None:
-        G = calc_average_correlation(G)
+        add_cross_all_to_G(G, g_cross_all, g_times, averaging, list_of_g_out, c0_all, c1_all)
     
     if calcAv:
         # calculate average correlation of all detector elements
@@ -410,3 +397,43 @@ def calc_average_correlation(G):
         setattr(G, str(field) + '_average', Gtot)
         
     return G
+
+
+def add_cross_all_to_G(G, g_cross_all, tau, averaging, list_of_g_out, c0_all=None, c1_all=None):
+    # g_cross_all = [Nf, Nc, G, c0, c1]
+    averaging_list = []
+    if averaging is None:
+        for i in range(len(c0_all)):
+            averaging_list.append([[int(c0_all[i]), int(c1_all[i])]])
+    else:
+        for av in averaging:
+            singleAv = [int(ch_nr) for ch_nr in re.findall(r'\d+', av)]
+            single_av_list = [[singleAv[i], singleAv[i + 1]] for i in range(0, len(singleAv), 2)]
+            averaging_list.append(single_av_list)
+    
+    if list_of_g_out is None:
+        list_of_g_out = []
+        for av in averaging_list:
+            corr_av_single_str = 'det'
+            for j in range(len(av)):
+                corr_av_single_str += str(av[j][0]) + 'x' +  str(av[j][1]) + '+'
+            list_of_g_out.append(corr_av_single_str[:-1])
+    
+    # which curves to average over is defined now and their names are defined
+    for i in range(len(averaging_list)):
+        list_of_av_single_corr = averaging_list[i]
+        c0_idx = []
+        c1_idx = []
+        for j in range(len(list_of_av_single_corr)):
+            c0_idx.append(list_of_av_single_corr[j][0])
+            c1_idx.append(list_of_av_single_corr[j][1])
+        g_single_mean = g_cross_all[:, :, :, c0_idx, c1_idx].mean(axis=-1)
+        
+        # move Nf axis to the end → (Nc, Ng, Nf)
+        g_single_mean_reordered = np.transpose(g_single_mean, (1, 2, 0))
+        tau_expanded = np.broadcast_to(tau, (g_single_mean.shape[1], g_single_mean.shape[2]))[..., None]
+        g_single_mean_final = np.concatenate((tau_expanded, g_single_mean_reordered), axis=-1)
+        
+        G.add_corr_chunks(list_of_g_out[i], g_single_mean_final)
+        G.list_of_g_out.append(list_of_g_out[i])
+            

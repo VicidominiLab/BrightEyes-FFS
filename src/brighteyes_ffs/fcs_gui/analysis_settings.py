@@ -407,9 +407,7 @@ class FFScorr:
         if Gall is None:
             return None
         if corrtype == "random":
-            excluded_keys = {"dwellTime", "crossCenterAv", "chunksOff", "chunks_off"}
-            # Get the filtered list of keys
-            keys = [key for key in list(Gall.__dict__.keys()) if key not in excluded_keys]
+            keys = Gall.list_of_g_out
             Gsingle = getattr(Gall, keys[0])
         elif 'crossCenterAv' in corrtype:
             if 'chunk' in corrtype:
@@ -418,13 +416,8 @@ class FFScorr:
             else:
                 Gsingle = fcs_crosscenter_av(Gall, returnObj = False)
         else:
-            try:
-                Gsingle = getattr(Gall, corrtype + "_averageX")
-            except:
-                try:
-                    Gsingle = getattr(Gall, corrtype + "_average")
-                except:
-                    Gsingle = getattr(Gall, corrtype)
+            Gsingle = getattr(Gall, corrtype)
+            
         return Gsingle
     
     def get_corr3D(self, N=9):
@@ -531,15 +524,16 @@ class CorrSettings():
             G = analysis.corrs
             idx = np.nonzero(chunks_off)
             idx = list(idx[0]) # list of indices of good chunks
-            try:
-                G = fcs_av_chunks(G, idx)
-                try:
-                    G = fcs_crosscenter_av(G, returnField='_averageX')
-                except:
-                    pass
-                analysis.update(corrs=G)
-            except:
-                pass
+            G.good_chunks = idx
+            # try:
+            #     G = fcs_av_chunks(G, idx)
+            #     try:
+            #         G = fcs_crosscenter_av(G, returnField='_averageX')
+            #     except:
+            #         pass
+            #     analysis.update(corrs=G)
+            # except:
+            #     pass
             
 
 class CorrFit():
@@ -686,7 +680,7 @@ class CorrFit():
         
         dets = ['square', 'square', 'airy', 'airy6']
         columnorder_square = ['Right', 'Up', 'Left', 'Down'] # square array detector
-        columnorder_square_v2 = ['V0_H1', 'V-1_H0', 'V0_H-1', 'V1_H0'] # square array detector
+        columnorder_square_v2 = ['V0_H1', 'Vn1_H0', 'V0_Hn1', 'V1_H0'] # square array detector
         columnorder_airy = ['UpRight', 'UpLeft', 'DownLeft', 'DownRight'] # airy detector
         columnorder_airy6 = ['Angle0', 'Angle60', 'Angle120', 'Angle180', 'Angle240', 'Angle300'] # airy detector
         

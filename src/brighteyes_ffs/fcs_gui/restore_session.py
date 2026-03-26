@@ -20,7 +20,7 @@ from PyQt5.QtWidgets import QFileDialog
 from datetime import datetime
 
 from .analysis_settings import FFSlib, FFSfile, FFSmetadata, FFScorr, CorrSettings, FitSingleObj, CorrFit
-from ..fcs.fcs2corr import Correlations
+from ..fcs.fcs2corr import Correlations, list_of_g_out_v1p1
 from .fitmodel_class import FitModel
 
 from ..tools.csv2array import csv2array, array2csv
@@ -355,7 +355,6 @@ def restorelib_ffs(libfile, root=0):
                     except:
                         gListOut = None
                     
-                    
                     corrSett.elements = elListOut
                     corrSett.list_of_g = gListOut
                     corrSett.average = getattr(f[currAnal].attrs, 'average', None)
@@ -370,15 +369,43 @@ def restorelib_ffs(libfile, root=0):
                     
                     Ncorrs = 0
                     corrs = Correlations()
+                    corrs.good_chunks =  [i for i, val in enumerate(corrSett.chunks_off) if val]
                     corrs.dwellTime = -1 # not used
-                    for corr in f[currAnal].keys():
-                        if corr not in ['fits']:
-                            Ncorrs += 1
-                            setattr(corrs, corr, f[currAnal + '/' + corr][:])
                     
-                    if Ncorrs > 1:
-                        # if only 1 element found, this element is chunksoff and not used because already stored elsewhere
-                        corrObj.corrs = corrs
+                    if lib.version == '1.2':
+                        list_of_g_out = []
+                        for corr in f[currAnal].keys():
+                            if corr not in ['fits'] and 'off' not in corr:
+                                list_of_g_out.append(corr)
+                                Ncorrs += 1
+                                
+                        for l_corr, corr in enumerate(list_of_g_out):
+                            corrs.add_corr_chunks(corr, f[currAnal + '/' + corr][:])
+                            corrs.list_of_g_out.append(corr)
+                        
+                        if Ncorrs > 1:
+                            # if only 1 element found, this element is chunksoff and not used because already stored elsewhere
+                            corrObj.corrs = corrs
+                    else:
+                        # versions older than 1.2 store all curves in separate fields
+                        corrs_temp = Correlations()
+                        for corr in f[currAnal].keys():
+                            if corr not in ['fits'] and 'off' not in corr:
+                                Ncorrs += 1
+                                setattr(corrs_temp, corr, f[currAnal + '/' + corr][:])
+                                corr_dummy = f[currAnal + '/' + corr][:]
+                        list_of_g_out, n_chunks = list_of_g_out_v1p1(corrs_temp)
+                        
+                        for l_corr, corr in enumerate(list_of_g_out):
+                            corr_chunks = np.zeros((n_chunks, *corr_dummy.shape))
+                            for m in range(n_chunks):
+                                corr_chunks[m] = f[currAnal + '/' + corr + '_chunk' + str(m)][:]
+                            corrs.add_corr_chunks(corr, corr_chunks)
+                            corrs.list_of_g_out.append(corr)
+                        
+                        if Ncorrs > 1:
+                            # if only 1 element found, this element is chunksoff and not used because already stored elsewhere
+                            corrObj.corrs = corrs
                     
                     fileObj.analysis_list.append(corrObj)
                     
@@ -604,7 +631,7 @@ def savelib_ffs(FFSlib, root=0, fname=''):
         with h5py.File(fname, "w") as f:
             # save version
             inf = f.create_group('info')                                                                   
-            inf.attrs['version'] = check_none("1.1", dtype=str)
+            inf.attrs['version'] = check_none("1.2", dtype=str)
             inf.attrs['notes'] = check_none(FFSlib.notes, dtype=str)
             inf.attrs['active_image'] = check_none(FFSlib.active_image, dtype=int)
             inf.attrs['date_created'] = check_none(FFSlib.date_created, dtype=str)
@@ -692,12 +719,13 @@ def savelib_ffs(FFSlib, root=0, fname=''):
                         # save active fit
                         analysis5.attrs["active_fit"] = check_none(analysis.active_fit)
                         # save correlations
-                        c = analysis.corrs
-                        if c is not None:
-                            for key in list(c.__dict__.keys()):
-                                if key != "dwellTime" and key != "chunks_off":
+                        corr_all = analysis.corrs.list_of_g_out
+                        for c in corr_all:
+                       
+                            # for key in list(c.__dict__.keys()):
+                                # if key != "dwellTime" and key != "chunks_off":
                                     # DWELLTIME IS ALREADY STORED IN METADATA
-                                    analysis5.create_dataset(key, data=getattr(c, key))
+                            analysis5.create_dataset(c, data=getattr(analysis.corrs, c).chunks)
         
                         # save fits
                         if root != 0:
