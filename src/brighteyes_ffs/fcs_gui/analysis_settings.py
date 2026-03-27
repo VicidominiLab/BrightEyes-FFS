@@ -408,7 +408,7 @@ class FFScorr:
             return None
         if corrtype == "random":
             keys = Gall.list_of_g_out
-            Gsingle = getattr(Gall, keys[0])
+            Gsingle = getattr(Gall, keys[0]).average()
         elif 'crossCenterAv' in corrtype:
             if 'chunk' in corrtype:
                 chunk = corrtype[len('crossCenterAv'):]
