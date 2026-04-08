@@ -74,7 +74,7 @@ def plot_fingerprint_airyscan(counts, cmap='inferno', plot=False, figsize=(5,5))
 
 def plot_fingerprint_luminosa(counts, cmap='inferno', plot=False, figsize=(5,5)):
     """
-    Plot the airyscan fingerprint from a data set with the photon counts for
+    Plot the luminosa fingerprint from a data set with the photon counts for
     each of the 23 (or 32) detector elements.
     
     List order either
