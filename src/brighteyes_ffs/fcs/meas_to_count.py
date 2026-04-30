@@ -5,6 +5,7 @@ import h5py
 import sys
 import tifffile
 from ome_types import from_xml
+from scipy.io import loadmat
 from ..tools.list_files import list_files
 from ..tools.array2tiff import array2tiff, array2rgbtiff
 from .get_fcs_info import get_file_info, get_metafile_from_file, get_file_info_czi
@@ -216,6 +217,52 @@ def czi2h5(fname, time_resolution=None):
     out = np.transpose(out.reshape((32,out.shape[1]*out.shape[2])))
     fname_h5 = fname[:-4] + ".h5"
     fname_h5 = numpy2h5(fname_h5, out, time_resolution)
+    return fname_h5
+
+
+def mat2h5(fname):
+    """
+    Convert a .mat file from Genoa Instruments to h5.
+    The h5 file is stored in the same location 
+
+    Parameters
+    ----------
+    fname : str/path
+        Path to the mat file (from Genoa instruments Carma software)
+    
+    Returns
+    -------
+    fname_h5 : string
+        Path of the .h5 file.
+
+    """
+    data_temp = loadmat(fname)
+    data = {
+        key: value
+        for key, value in data_temp.items()
+        if not key.startswith("__")
+    }
+    for key, _ in data.items():
+        keyname = key
+
+    dwell_time = data[keyname][0][0]["DwellTime"][0][0] # ms
+    n_det = 0
+    det_found = True
+    while det_found:
+        try:
+            data_shape = data[keyname][0][0]["pixel_SPA" + str(n_det) + "_p0"]
+            n_det += 1
+        except:
+            det_found = False
+
+    root = data[keyname][0, 0]
+    data_tt = np.column_stack([
+        np.ravel(np.squeeze(root[f"pixel_SPA{c}_p0"]).T)
+        for c in range(n_det)
+    ])
+
+    fname_h5 = fname[:-4] + ".h5"
+    numpy2h5(fname_h5, data_tt, 1e3*dwell_time)
     return fname_h5
 
 

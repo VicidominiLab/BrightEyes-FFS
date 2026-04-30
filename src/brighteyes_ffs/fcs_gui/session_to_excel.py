@@ -48,7 +48,7 @@ def lib2excel(lib, fname_xlsx):
     num_im = lib.num_images
     for im in range(num_im):
         # go through all images
-        im_obj = lib.lib[0]
+        im_obj = lib.lib[im]
         num_ffs = im_obj.num_files
         for f in range(num_ffs):
             current_column = 'A'

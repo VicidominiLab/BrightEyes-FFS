@@ -47,7 +47,7 @@ def extract_spad_data(data, mode):
             # list of channels to be summed, e.g. "C1+3+12+42"
             channels = [int(i) for i in re.findall(r'\d+', mode)]
         elif mode[0] == 'N':
-            # list of channels to be removed, e.g. "C1+3+12+42"
+            # list of channels to be removed, e.g. "N1+3+12+42"
             channels_out = [int(i) for i in re.findall(r'\d+', mode)]
             channels = [i for i in range(np.shape(data)[1]) if i not in channels_out]
         else:

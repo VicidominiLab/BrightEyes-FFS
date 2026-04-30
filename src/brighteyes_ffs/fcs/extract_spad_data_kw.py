@@ -10,7 +10,7 @@ see extract_spad_photon_streams.py
 """
 
 keyword_2_ch = {
-    # SPAD Genoa Instruments
+    # SPAD 5x5
       "central": [12],
       "sum3": [6, 7, 8, 11, 12, 13, 16, 17, 18],
       "sum5": [i for i in range(25)],
@@ -28,5 +28,11 @@ keyword_2_ch = {
       "airyring1" : [0, 1, 2, 3, 4, 5, 6],
       "airyring2" : [i for i in range(19)],
       "airyring3" : [i for i in range(32)],
+    
+    # PRISM 7x7 Genoa Instruments
+      "prismcentral" : [24],
+      "prismsum3" : [16,17,18,23,24,25,30,31,32],
+      "prismsum5" : [i for i in range(49) if i not in [0,1,2,3,4,5,6,7,13,14,20,21,27,28,34,35,41,42,43,44,45,46,47,48]],
+      "prismsum7" : [i for i in range(49)],
     
     }

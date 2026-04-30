@@ -423,7 +423,7 @@ class FFScorr:
     def get_corr3D(self, N=9):
         # convert set of cross-correlations to 3D array [tau, ch1, ch2]
         try:
-            Gsingle = self.get_corr('V0_H0')
+            Gsingle = self.get_corr('V0_H0').average()
         except:
             return None, None
         not_found = 0
@@ -432,7 +432,7 @@ class FFScorr:
         for i in range(N):
             for j in range(N):
                 try:
-                    G = self.get_corr('V' + str(j-N//2) + '_H' + str(i-N//2))
+                    G = self.get_corr('V' + str(j-N//2) + '_H' + str(i-N//2)).average(self.corrs.good_chunks)
                     G3d[:, j, i] = G[:,1]
                 except:
                     not_found += 1

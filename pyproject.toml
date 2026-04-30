@@ -26,11 +26,10 @@ dependencies = [
 	"czifile",
 	"pydantic<2.0",
 	"brighteyes_ism",
-	"notebook==6.4.11",
+	"jupyterlab",
 	"openpyxl",
 	"ptufile",
 	"libttp",
-	"jsonschema==4.17.3",
 ]
 description = "Toolbox for analysing FCS/FFS data with array detectors"
 readme = "README.md"

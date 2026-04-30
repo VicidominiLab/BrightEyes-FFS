@@ -40,7 +40,8 @@ def tt2corr(data1, data2, macro_time=1, m=50):
 
 def autocorrelation_wiener_khinchin(data1, data2, macro_time=1.0):
     """
-    Calculate the autocorrelation function using the Wiener-Khinchin theorem.
+    Calculate the correlation function using the Wiener-Khinchin theorem.
+    Can also be used for cross-correlation
 
     Parameters
     ----------
@@ -62,14 +63,16 @@ def autocorrelation_wiener_khinchin(data1, data2, macro_time=1.0):
     n = len(data1)
     
     # Perform FFT of the signal
-    
     data1_pad = np.concatenate((data1, np.zeros(len(data1)-1)))
-    data2_pad = np.concatenate((data2, np.zeros(len(data2)-1)))
+    if data1 is data2:
+        data2_pad = data1_pad
+    else:
+        data2_pad = np.concatenate((data2, np.zeros(len(data2)-1)))
     
-    fft1 = np.fft.fft(data1_pad)  # Zero-pad to 2n for better resolution
+    fft1 = np.fft.fft(data1_pad)  # Zero-pad to 2n 
     fft2 = np.fft.fft(data2_pad)
     
-    psd = fft1 * np.conjugate(fft2)
+    psd = np.conjugate(fft1) * fft2
     
     corr = np.fft.ifft(psd).real
     g = corr[:(corr.size//2)+1]
@@ -78,14 +81,22 @@ def autocorrelation_wiener_khinchin(data1, data2, macro_time=1.0):
     n = len(g)  # Original signal length (before padding)
     overlap = np.arange(1, n + 1)  # Overlap for positive lags
     g /= overlap[::-1]  # Normalize positive lags
-    g /= np.mean(data1)
-    g /= np.mean(data2)
+    
+    # Normalize each lag by dividing by the mean intensity of the overlapping points
+    c1 = np.concatenate(([0.0], np.cumsum(data1)))
+    c2 = np.concatenate(([0.0], np.cumsum(data2)))
+    lags = np.arange(n)
+    mean1 = c1[n - lags] / overlap[::-1]
+    mean2 = (c2[n] - c2[lags]) / overlap[::-1]
+    g /= mean1
+    g /= mean2
+    
+    # subtract 1
     g -= 1
     
     # Generate time lags
     n = len(g)
     tau = np.linspace(0, n-1, n) * macro_time
-    
     
     #g = np.concatenate((corr[n:], corr[:n]))
     

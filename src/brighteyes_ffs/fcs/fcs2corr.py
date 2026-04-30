@@ -13,7 +13,7 @@ from .extract_spad_data import extract_spad_data
 from .distance2detelements import distance2detelements, spad_shift_vector_crosscorr
 from .distance2detelements import spad_coord_from_det_numb as coord
 from .get_fcs_info import get_file_info, get_metafile_from_file
-from .meas_to_count import file_to_fcs_count, czi2h5
+from .meas_to_count import file_to_fcs_count, czi2h5, mat2h5
 from .atimes2corr import atimes_2_corr
 from .timetrace2corr import tt2corr
 from .corr2csv import corr2csv
@@ -170,6 +170,14 @@ def fcs_load_and_corr_split(fname, list_of_g=['central', 'sum3', 'sum5'], accura
         if not os.path.exists(fname_h5):
             print('converting czi file')
             fname = czi2h5(fname)
+        fname = fname_h5
+    
+    elif fname.endswith(".mat"):
+        fname_h5 = fname[:-4] + '.h5'
+        if not os.path.exists(fname_h5):
+            print('converting mat file')
+            fname = mat2h5(fname)
+        fname = fname_h5
     
     if metadata is None:
         metafile = get_metafile_from_file(fname)
