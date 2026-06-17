@@ -350,13 +350,13 @@ def restorelib_ffs(libfile, root=0):
                    
                     try:
                         gListOut = []
-                        for l in range(len(gList)):
-                            gListOut.append(gList[l])
+                        for l in range(len(elListOut)):
+                            gListOut.append(elListOut[l])
                     except:
                         gListOut = None
                     
                     corrSett.elements = elListOut
-                    corrSett.list_of_g = gListOut
+                    corrSett.list_of_g = gList
                     corrSett.average = getattr(f[currAnal].attrs, 'average', None)
                     corrSett.algorithm = f[currAnal].attrs['algorithm']
                     corrSett.resolution = check_none(f[currAnal].attrs['resolution'], dtype=int)
@@ -378,14 +378,11 @@ def restorelib_ffs(libfile, root=0):
                             if corr not in ['fits'] and 'off' not in corr:
                                 list_of_g_out.append(corr)
                                 Ncorrs += 1
-                                
                         for l_corr, corr in enumerate(list_of_g_out):
                             corrs.add_corr_chunks(corr, f[currAnal + '/' + corr][:])
                             corrs.list_of_g_out.append(corr)
+                        corrObj.corrs = corrs
                         
-                        if Ncorrs > 1:
-                            # if only 1 element found, this element is chunksoff and not used because already stored elsewhere
-                            corrObj.corrs = corrs
                     else:
                         # versions older than 1.2 store all curves in separate fields
                         corrs_temp = Correlations()

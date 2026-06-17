@@ -227,8 +227,7 @@ def plot_corrs_av(G, good_chunks_only=True, fig=None, ax=None, figsize=None, cma
     G : Correlations object
         Correlations object from fcs2corr .
     good_chunks_only : boolean
-        Use '_average' for average over all segments or
-        '_averageX' for average over good chunks only
+        Take average from good chunks only
     fig : plt.figure(), optional
         Figure. If none, open new figure. The default is None.
     ax : axis, optional
@@ -333,6 +332,10 @@ def plot_corrs_fit(G_all, tau, list_of_g_out, fitresults, fig=None, ax=None, fig
     
     n_corr = len(list_of_g_out)
     
+    if n_corr == 1:
+        G_all = G_all[:, None]
+        fitresults = [fitresults]
+    
     try:
         temp = fitresults.fun[:,0]
         fit = 'global'
@@ -345,7 +348,7 @@ def plot_corrs_fit(G_all, tau, list_of_g_out, fitresults, fig=None, ax=None, fig
             figsize = (3*n_corr,3)
         
         if fig is None or ax is None:
-            fig, ax = plt.subplots(2, n_corr, figsize=figsize, gridspec_kw={"height_ratios": [3, 1]})
+            fig, ax = plt.subplots(2, n_corr, figsize=figsize, gridspec_kw={"height_ratios": [3, 1]}, squeeze=False)
     
         for i, corr in enumerate(list_of_g_out):
             ax[0,i].scatter(tau, G_all[:,i], s=size, color=color, label=corr)

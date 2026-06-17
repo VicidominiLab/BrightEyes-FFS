@@ -173,6 +173,75 @@ def fcs_analytical_2c_anomalous(tau, N, tauD1, tauD2, alpha1, alpha2, F, T, tau_
     return Gy
 
 
+def fcs_analytical_2c_anomalous_c(tau, c, D1, D2, alpha1, alpha2, F, T, tau_triplet, w, SF, offset, brightness):
+    """
+    Calculate the analytical fcs autocorrelation function assuming 3D Gaussian
+    diffusion with triplet state, afterpulsing and 2 components anomalous diffusion
+
+    Parameters
+    ----------
+    tau : 1D numpy array
+        Lag time [s] (vector).
+    c : scalar
+        Particle concentration [/um^3]
+        N = w0^2 * z0 * c * pi^(3/2).
+    tauD1 : scalar
+        Diffusion coefficient species 1 [um^2/s].
+    tauD2 : scalar
+        Diffusion coefficient species 2 [um^2/s].
+    alpha1 : scalar
+        Anomalous diffusion parameter species 1
+    alpha2 : scalar
+        Anomalous diffusion parameter species 2
+    F : scalar
+        Fraction of species 1.
+    T : scalar, optional
+        Fraction in triplet.
+    tautrip : scalar
+        Residence time in triplet state [s].
+    w : scalar
+        Beam waist [um]
+    SF : scalar
+        Shape factor of the PSF.
+    offset : scalar
+        Offset. The default is 0.
+    brightness : scalar
+        Relative brightness species2/species1
+
+    Returns
+    -------
+    Gy : 1D numpy array
+        Vector with the autocorrelation G(tau).
+
+    """
+    # effective volume
+    V_eff = np.pi**(3/2) * w**3 * SF
+    N = c * V_eff
+    
+    # diffusion time
+    tauD1 = w**2 / 4 / D1
+    tauD2 = w**2 / 4 / D2
+    
+    # amplitude
+    Gy = 1 / N
+    
+    # brightness
+    Gy /= (F + brightness * (1-F))**2
+    
+    # triplet fraction
+    Gy *= (1 + T / (1 - T) * np.exp(-tau/tau_triplet))
+    
+    # two anomalous components
+    Gcomp1 = F * (1 + (tau/tauD1)**alpha1)**(-1) * (1 + (tau/tauD1)**alpha1/SF**2)**(-1/2)
+    Gcomp2 = brightness**2 * (1 - F) * (1 + (tau/tauD2)**alpha2)**(-1) * (1 + (tau/tauD2)**alpha2/SF**2)**(-1/2)
+    
+    # total
+    Gy *= (Gcomp1 + Gcomp2)
+    Gy += offset
+    
+    return Gy
+
+
 def fcs_dualfocus(tau, N, D, w, SF, rhox, rhoy, offset, vx=0, vy=0):
     """
     Calculate the analytical fcs crosscorrelation function for dual focus fcs
@@ -222,6 +291,101 @@ def fcs_dualfocus(tau, N, D, w, SF, rhox, rhoy, offset, vx=0, vy=0):
     
     return G
 
+
+def fcs_dualfocus_c(tau, c, D, w, SF, rhox, rhoy, offset, vx=0, vy=0):
+    """
+    Calculate the analytical fcs crosscorrelation function for dual focus fcs
+    assuming 3D Gaussian and diffusion without triplet state
+    Equation from Scipioni, Nat. Comm., 2018 and consistent with own Maple
+    calculations
+
+    Parameters
+    ----------
+    tau : 1D numpy array
+        Lag time [s] (vector).
+    c : scalar
+        Particle concentration [/um^3]
+        N = w0^2 * z0 * c * pi^(3/2)
+        and w0 the effective focal volume (w0^2 + w1^2) / 2.
+    D : scalar
+        Diffusion coefficient of the fluorophores/particles [m^2/s].
+    w : scalar
+        Radius of the effective PSF, i.e. sqrt((w0^2 + w1^2) / 2)
+        with w0 and w1 the 1/e^2 radii of the two PSFs. [m]
+    SF : scalar
+        Shape factor of the PSF.
+    rhox : scalar
+        Distance between the two detector elements in the horizontal direction [m].
+    rhoy : scalar
+        Distance between the two detector elements in the vertical direction [m].
+    offset : scalar
+        DC component of G.
+    vx : scalar, optional
+        Velocity in x direction. The default is 0.
+    vy : scalar, optional
+        Velocity in y direction. The default is 0.
+
+    Returns
+    -------
+    G : 1D numpy array
+        Vector with the autocorrelation G(tau).
+
+    """
+    
+    V_eff = np.pi**(3/2) * w**3 * SF
+    N = c * V_eff
+    
+    tauD = w**2 / 4 / D
+    G = N * (1 + tau/tauD) * np.sqrt(1 + tau/(tauD*SF**2))
+    G = 1 / G
+    G = G * np.exp(-((rhox - vx*tau)**2 + (rhoy - vy*tau)**2) / w**2 / (1 + tau/tauD))
+    G += offset
+    
+    return G
+
+
+def fcs_circular_scanning_c(tau, c, D, w, SF, orbit_time, orbit_radius, offset, vx=0, vy=0):
+    """
+    Orbital scanning correlation formula
+
+    Parameters
+    ----------
+    tau : 1D numpy array
+        Lag time [s] (vector).
+    c : scalar
+        Particle concentration [/um^3]
+        N = w0^2 * z0 * c * pi^(3/2)
+        and w0 the effective focal volume (w0^2 + w1^2) / 2.
+    D : scalar
+        Diffusion coefficient of the fluorophores/particles [um^2/s].
+    w : scalar
+        1/e^2 radius of the effective PSF [um]
+    SF : scalar
+        Shape factor of the PSF.
+    orbit_time : scalar
+        Orbit tine [s]
+    orbit_radius : scalar
+        Orbit radius [um]
+    offset : scalar
+        DC component of G.
+    vx : scalar, optional
+        Velocity in x direction. The default is 0.
+    vy : scalar, optional
+        Velocity in y direction. The default is 0.
+
+    Returns
+    -------
+    G : 1D numpy array
+        Vector with the autocorrelation G(tau).
+
+    """
+    
+    alpha = 2 * np.pi / orbit_time * tau
+    rho = orbit_radius * np.sqrt(2-2*np.cos(alpha)) # = 2 * Rcirc * abs(sin(alpha/2))
+    
+    G = fcs_dualfocus_c(tau, c, D, w, SF, rho, 0, offset, vx=0, vy=0)
+    
+    return G
 
 def fcs_2c_2d_analytical(tau, N, tauD1, tauD2, F, alpha=1, T=0, tautrip=1e-6, offset=0, A=0, B=0):
     """

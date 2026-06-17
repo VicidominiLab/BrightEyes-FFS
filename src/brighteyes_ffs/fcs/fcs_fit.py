@@ -10,8 +10,7 @@ def fcs_fit(Gexp, tau, fitfun, fit_info, param, lBounds, uBounds, plotInfo, save
     """
     Fit experimental fcs data to the analytical model
     Assuming 3D diffusion in a Gaussian focal volume
-    No triplet state assumed
-
+    
     Parameters
     ----------
     Gexp : 1D numpy array
@@ -169,6 +168,93 @@ def fcs_fit_dualfocus(Gexp, tau, fit_info, param, weights=1, global_param=None, 
         fixed_param = param[fit_info==0]
     
     fitresult = least_squares(fitfun_dualfocus, fitparam_start, args=(fixed_param, fit_info, global_param, tau, Gexp, weights), bounds=(lBounds, uBounds))
+
+    return fitresult
+
+
+def fit_corr(Gexp, tau, fit_info, param, weights=1, global_param=None, lower_bounds=None, upper_bounds=None, fitmodel=None, **fit_options):
+    """
+    Fit experimental fcs data to the analytical model
+    Assuming 3D diffusion in a Gaussian focal volume
+    
+    Parameters
+    ----------
+    Gexp : 2D np.array
+        2D matrix with all correlation curves (Each column is one curve).
+        OR 1D np.array in case of just one curve
+    tau : 1D np.array
+        Vector with tau values for a single correlation curve [s].
+    fit_info : 1D np.array
+        np.array boolean vector with the parameters in the same order as the fit
+        function, e.g. for fcs_dualfocus_c
+        [c, D, w0, SF, rhox, rhoy, offset, vx, vy]
+        True if this value has to be fitted
+        False if this value is fixed during the fit.
+    param : 2D np.array
+        vector with start values for all the parameters.
+        Each column corresponds to a different correlation curve.
+    weights : np.array
+        Same dimensions as Gexp with the fit weights
+    global_param : list or None
+        Boolean list of length len(fit_info)
+        True for global parameters, False for individual parameters
+    lower_bounds : 1D np.array
+        Vector with lower bound values for all (fitted and fixed) parameters.
+    upper_bounds : 1D np.array
+        Vector with upper bound values for all (fitted and fixed) parameters.
+    fitmodel : function
+        Fit model function, e.g. fcs_2c_analytical from the brighteyes package:
+        from brighteyes_ffs.fcs.fcs_analytical import fcs_2c_analytical
+    fit_options : fit options
+        All options from least_squares can be entered
+
+    Returns
+    -------
+    fitresult : object
+        Output of least_squares.
+
+    """
+    
+    fit_info = np.asarray(fit_info)
+    param = np.asarray(param)
+    
+    n_corr, _ = hist_param(Gexp)
+    n_param = len(fit_info)
+    
+    if global_param is None:
+        global_param = [False for i in range(n_param)]
+    
+    if lower_bounds is None:
+        lower_bounds = np.asarray([0 for i in range(len(fit_info))])
+    else:
+        lower_bounds = np.asarray(lower_bounds).copy()
+    if upper_bounds is None:
+        upper_bounds = 1e12+np.asarray([0 for i in range(len(fit_info))])
+    else:
+        upper_bounds = np.asarray(upper_bounds).copy()
+    
+    if n_corr > 1:
+        fitparam_start, fixed_param, lower_bounds, upper_bounds = make_fit_parameters_global_fit(param, fit_info, n_corr, global_param, lower_bounds, upper_bounds)
+    else:
+        fitparam_start = np.squeeze(param[fit_info==1])
+        lower_bounds = np.squeeze(lower_bounds[fit_info==1])
+        upper_bounds = np.squeeze(upper_bounds[fit_info==1])
+        fixed_param = np.squeeze(param[fit_info==0])
+        param = np.squeeze(param)
+    
+    fitresult = least_squares(fitfun_general, fitparam_start, args=(fixed_param, fit_info, tau, Gexp, fitmodel, global_param, weights), bounds=(lower_bounds, upper_bounds), **fit_options)
+    
+    if n_corr > 1:
+        # multiple curves were fitted simultaneously
+        fitresult.x = global_fit_result_to_parameters(param, fit_info, n_corr, global_param, fitresult.x)
+        fitresult.fun = global_fit_result_to_residuals(fitresult.fun, Gexp, n_corr, weights, minimization='absolute')
+    else:
+        # only one curve fitted
+        if fitfun != mem_fit_free_diffusion:
+            fitresult.fun /= weights
+            param_out = param.copy()
+            param_out[fit_info==1] = fitresult.x
+            fitresult.x = param_out
 
     return fitresult
 
@@ -419,6 +505,69 @@ def fitfun_2c(fitparamStart, fixedparam, fit_info, tau, yexp, weights=1):
     res *= weights
     
     return res
+
+def fitfun_general(fitparam_start, fixed_param, fit_info, tau, Gexp, fitmodel, global_param, weights=1):
+    """
+    General fit function
+
+    Parameters
+    ----------
+    fitparamStart : 1D np.array
+        List with starting values for the fit parameters:
+        order: [c, D (um^2/s), w2 for all (nm), SF for all, rhox for all (nm), rhoy for all (nm), vx (um/s), vy (um/s), offset for all]
+        E.g. if only c and D are fitted, this becomes a two
+        element vector [1, 1e-3].
+    fixedparam : 1D np.array
+        List with values for the fixed parameters:
+        order: [N, tauD, SF, offset]
+        same principle as fitparamStart.
+    fit_info : 1D np.array
+        np.array boolean vector with always 4 elements
+        1 for a fitted parameter, 0 for a fixed parameter
+        E.g. to fit N and tau D this becomes [1, 1, 0, 0]
+        order: [N, tauD, SF, offset].
+    tau : 1D np.array
+        Vector with tau values
+        All curves are concatenated.
+    yexp : 1D np.array
+        Vector with experimental autocorrelation.
+    useSingleW : 1D np.array, optional
+        Use the same w0 value for all cross-correlation curves
+        If True, "fitparamStart", "fixedparam" and "fit_info"
+        remain as before, bu only the first w0 value is used.
+        The default is False.
+    weights : 1D np.array, optional
+        Vector with weights. The default is 1.
+
+    Returns
+    -------
+    res : 1D np.array
+        Fit residuals.
+
+    """
+    
+    # number of parameters (fitted and fixed combined)
+    n_param = len(fit_info)
+    
+    # number of histogram curves to fit and number of bins in each histogram
+    n_corr, _ = hist_param(Gexp)
+    
+    all_param = make_2D_fit_parameter_array_global_fit(fitparam_start, fixed_param, fit_info, global_param, n_param, n_corr)
+    
+    yModel = np.concatenate([fitmodel(tau, *all_param[:,i]) for i in range(n_corr)])
+    
+    if n_corr > 1:
+        Gexp = np.concatenate([Gexp[:,i] for i in range(n_corr)])
+        if not np.isscalar(weights):
+            weights = np.concatenate([weights[:,i] for i in range(n_corr)])
+    
+    res = Gexp - yModel
+    
+    # calculate weighted residuals
+    res *= weights
+    
+    return res
+    
 
 
 def fitfun_dualfocus(fitparamStart, fixedparam, fit_info, global_param, tau, yexp, weights=1):

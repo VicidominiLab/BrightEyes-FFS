@@ -73,7 +73,7 @@ class Correlations:
                     raise ValueError("good_chunks cannot be None unless good_chunks_only=False")
             else:
                 good_chunks_idx = None
-            av_corr =  getattr(self, corr).average(good_chunks_idx)
+            av_corr = getattr(self, corr).average(good_chunks_idx)
             tau = av_corr[:,0]
             for f in range(self.n_filters+1):
                 Garray[:,i,f] = av_corr[:,1+f]
@@ -1544,6 +1544,7 @@ def list_of_g_out_v1p1(G):
     
     # remove duplicates
     listOfCorr2 = list(dict.fromkeys(listOfCorr2))
-    n_chunks /= len(listOfCorr2)
+    if len(listOfCorr2) > 0:
+        n_chunks /= len(listOfCorr2)
     
     return listOfCorr2, int(n_chunks)

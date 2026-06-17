@@ -4,6 +4,9 @@ from .simulate_pch import simulate_pch_1c, simulate_pch_1c_mc_ntimes, simulate_p
 from .generate_psf import generate_3d_gaussian
 
 
+
+
+
 def fit_pch(hist, fit_info, param, psf, lBounds=[1e-10,1e-10,0,0], uBounds=[1e10,1e10,1e10,1e10], weights=1, n_draws=1, n_bins=1e5, global_param=None, fitfun='fitfun_pch', minimization='relative'):
     """
     Fit photon counting histogram to the FIDA model

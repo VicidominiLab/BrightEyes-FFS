@@ -8,7 +8,6 @@ from ..tools.list_files import list_files
 from ..tools.closefile import closefile
 from ..tools.moving_average import moving_average
 
-import libttp.ttp as ttp
 import ptufile
 
 
@@ -195,6 +194,8 @@ def load_atimes_data(fname, channels='auto', sysclk_MHz=240, perform_calib=True)
     
     # -------------------- Raw TTM file --------------------
     elif fname[-2:] == "h5":
+        
+        import libttp.ttp as ttp
         
         if isinstance(channels, int):
             # total number of channels is given, e.g. 21
@@ -418,6 +419,8 @@ def load_atimes_data_pandas(fname, chunksize=1000000, macro_freq=240e6):
 
 
 def load_atimes_data_newprot(filename, sysclk_MHz=240.0, laser_MHz= 80.0, nchannel = 26, kC4=43, channels=25):
+    import libttp.ttp as ttp
+    
     data_head, data_filename = os.path.split(filename)
     fname = data_filename[:-4]
     
@@ -541,6 +544,7 @@ def atimes_raw_2_h5(fname, sysclk_MHz=240, laser_MHz=40, n_ch=21, destination_fo
 
     """
     
+    import libttp.ttp as ttp
     
     list_of_channels=np.arange(0,n_ch)
     
@@ -583,6 +587,8 @@ def h5_atimes_2_data(fname, n_ch, sysclk_MHz=240):
         column 2 the absolute microtimes.
 
     """
+    
+    import libttp.ttp as ttp
     
     calibDict=ttp.calculateCalibFromH5(filenameH5=fname, listChannel=range(0,n_ch))
     data = ATimesData()
