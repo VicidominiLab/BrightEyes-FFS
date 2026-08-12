@@ -191,6 +191,9 @@ def plot_corrs(G, good_chunks_only=False, fig=None, ax=None, figsize=None, cmap=
     
     if fig is None or ax is None:
         fig, ax = plt.subplots(1, n_corr, figsize=figsize)
+    
+    if len(list_of_g_out) == 1:
+        ax = [ax]
 
     for i, corr in enumerate(list_of_g_out):
         Gsingle, tau = G.get_corrs(corr)

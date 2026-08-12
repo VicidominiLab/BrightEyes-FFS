@@ -133,7 +133,7 @@ def get_file_info(fname, parameter=['all']):
         # read from czi file
         finfo = get_file_info_czi(fname)
         return finfo
-    elif fname_ext == '.ptu':
+    elif fname_ext == '.ptu' or fname_ext == '.t3r':
         # read from ptu file
         finfo = get_file_info_ptu(fname)
         return finfo

@@ -9,6 +9,7 @@ from ..tools.closefile import closefile
 from ..tools.moving_average import moving_average
 
 import ptufile
+import phconvert as phc
 
 
 class ATimesData:
@@ -25,6 +26,9 @@ class ATimesData:
     @property
     def num_channels(self):
         return len(self.all_channels)
+    
+    def duration(self, subtract_start_time=False, return_period=False):
+        return atimes_data_2_duration(self, self.macrotime, subtract_start_time, return_period)
     
     def get_channels(self, startswith='det'):
         all_ch = [int(k[len(startswith):]) for k in dir(self) if k.startswith(startswith)]
@@ -183,6 +187,30 @@ def load_atimes_data(fname, channels='auto', sysclk_MHz=240, perform_calib=True)
         microtime_res = ptu.tcspc_resolution # in s
         macrotime *= macrotime_res * 1e12 # in ps
         microtime *= microtime_res * 1e12 # in ps
+        
+        if isinstance(channels, str) and channels == 'auto':
+            # load all channels
+            channels = channels_all
+        
+        for ch in channels:
+            data_single_ch = np.column_stack((macrotime[channel==ch], microtime[channel==ch]))
+            setattr(data, 'det' + str(int(ch)), data_single_ch)
+    
+    # -------------------- t3r file --------------------
+    elif fname[-4:] == ".t3r":
+        timestamps, detectors, nanotimes, meta = phc.pqreader.load_t3r(fname)
+        
+        macrotime = timestamps * meta["timestamps_unit"] * 1e12
+        channel = detectors
+        microtime = nanotimes * meta["nanotimes_unit"][0] * 1e12
+        
+        if np.any(channel < 0):
+            valid = channel >= 0
+            macrotime = macrotime[valid]
+            channel = channel[valid]
+            microtime = microtime[valid]
+        
+        channels_all = np.unique(channel)
         
         if isinstance(channels, str) and channels == 'auto':
             # load all channels

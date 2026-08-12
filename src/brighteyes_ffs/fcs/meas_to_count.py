@@ -157,7 +157,20 @@ def file_to_fcs_count(fname, datatype=np.uint16, n_points=-1, n_offset=0, h5data
         with h5py.File(fname_h5, "r") as f:
             # Get the data
             data = f['data']
-            print(np.shape(data))
+            if n_points == -1:
+                out = data[n_offset:]
+            else:
+                out = data[n_offset:n_offset+n_points]
+            out = out[:]
+    elif fname.endswith('.mat'):
+        # check if corresponding h5 exists, if not create it
+        fname_h5 = fname[:-4] + '.h5'
+        if not os.path.exists(fname_h5):
+            print('converting mat file')
+            fname_h5 = mat2h5(fname)
+        with h5py.File(fname_h5, "r") as f:
+            # Get the data
+            data = f['data']
             if n_points == -1:
                 out = data[n_offset:]
             else:

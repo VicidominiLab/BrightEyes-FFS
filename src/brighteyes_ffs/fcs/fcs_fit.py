@@ -172,7 +172,7 @@ def fcs_fit_dualfocus(Gexp, tau, fit_info, param, weights=1, global_param=None, 
     return fitresult
 
 
-def fit_corr(Gexp, tau, fit_info, param, weights=1, global_param=None, lower_bounds=None, upper_bounds=None, fitmodel=None, **fit_options):
+def fit_corr(Gexp, tau, fit_info, param, weights=1, global_param=None, lower_bounds=None, upper_bounds=None, param_factors10=None, fitmodel=None, **fit_options):
     """
     Fit experimental fcs data to the analytical model
     Assuming 3D diffusion in a Gaussian focal volume
@@ -242,7 +242,7 @@ def fit_corr(Gexp, tau, fit_info, param, weights=1, global_param=None, lower_bou
         fixed_param = np.squeeze(param[fit_info==0])
         param = np.squeeze(param)
     
-    fitresult = least_squares(fitfun_general, fitparam_start, args=(fixed_param, fit_info, tau, Gexp, fitmodel, global_param, weights), bounds=(lower_bounds, upper_bounds), **fit_options)
+    fitresult = least_squares(fitfun_general, fitparam_start, args=(fixed_param, fit_info, tau, Gexp, fitmodel, global_param, weights, param_factors10), bounds=(lower_bounds, upper_bounds), **fit_options)
     
     if n_corr > 1:
         # multiple curves were fitted simultaneously
@@ -506,7 +506,7 @@ def fitfun_2c(fitparamStart, fixedparam, fit_info, tau, yexp, weights=1):
     
     return res
 
-def fitfun_general(fitparam_start, fixed_param, fit_info, tau, Gexp, fitmodel, global_param, weights=1):
+def fitfun_general(fitparam_start, fixed_param, fit_info, tau, Gexp, fitmodel, global_param, weights=1, param_factors10=None):
     """
     General fit function
 
@@ -552,7 +552,7 @@ def fitfun_general(fitparam_start, fixed_param, fit_info, tau, Gexp, fitmodel, g
     # number of histogram curves to fit and number of bins in each histogram
     n_corr, _ = hist_param(Gexp)
     
-    all_param = make_2D_fit_parameter_array_global_fit(fitparam_start, fixed_param, fit_info, global_param, n_param, n_corr)
+    all_param = make_2D_fit_parameter_array_global_fit(fitparam_start, fixed_param, fit_info, global_param, n_param, n_corr, param_factors10)
     
     yModel = np.concatenate([fitmodel(tau, *all_param[:,i]) for i in range(n_corr)])
     

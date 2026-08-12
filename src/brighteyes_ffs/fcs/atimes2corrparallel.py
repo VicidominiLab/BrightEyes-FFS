@@ -136,7 +136,7 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
     
     calc_all_xcorr = False
     start_ch = 0
-    if "crossAll" in list_of_g:
+    if "crossAll" in list_of_g or "cross_all" in list_of_g or "crossall" in list_of_g:
         start_ch = int(all_ch[0][3:])
         stop_ch = int(all_ch[-1][3:])+1
         list_of_g = convert_crossall_to_list_of_g(stop_ch, start_ch)
@@ -335,7 +335,7 @@ def extract_atimes_for_corr(data, corr, split, print_info=True):
         t1 = dataExtr1[:, 0]
         corrname = corr
         crossCorr = True
-    elif corr[0] == 'C':
+    elif corr[0] == 'C' or corr[0] == 'S':
         # crosscorrelation custom sum of channels
         xpos = np.max([corr.find('X'), corr.find('x')])
         if xpos > -1:
@@ -372,6 +372,7 @@ def extract_atimes_for_corr(data, corr, split, print_info=True):
 
 def calc_average_correlation(G):
     # Get list of "root" names, i.e. without "_chunk"
+    # depricated
     Gfields = list(G.__dict__.keys())
     t = [Gfields[i].split("_chunk")[0] for i in range(len(Gfields))]
     t = list(dict.fromkeys(t))
@@ -400,7 +401,8 @@ def calc_average_correlation(G):
 
 
 def add_cross_all_to_G(G, g_cross_all, tau, averaging, list_of_g_out, c0_all=None, c1_all=None):
-    # g_cross_all = [Nf, Nc, G, c0, c1]
+    # g_cross_all = [Nf, Nc, G, c0, c1]:
+    # 5D: number of filters, number of chunks, number of time points, number of channels, number of channels
     averaging_list = []
     if averaging is None:
         for i in range(len(c0_all)):

@@ -57,7 +57,8 @@ It requires the following Python packages
 	brighteyes_ism
 	notebook
 	ptufile
-
+	phconvert
+	
 
 
 ### GUI

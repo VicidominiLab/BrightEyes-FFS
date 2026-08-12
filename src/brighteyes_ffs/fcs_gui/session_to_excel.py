@@ -1,5 +1,6 @@
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill
+import numpy as np
 from .restore_session import restorelib
 import os
 
@@ -91,7 +92,27 @@ def lib2excel(lib, fname_xlsx):
                             column_fitresult = next_letter(column_fitresult)
                         current_line += 1
     wb.save(fname_xlsx)
-            
+
+
+def corr2excel(list_of_corr, fname_xlsx):
+    wb = Workbook()
+    ws = wb.active
+    
+    current_column = 'A'
+    for i in range(len(list_of_corr)):
+        corr = list_of_corr[i]
+        corr_shape = np.shape(corr)
+        n_t = corr_shape[0]
+        n_g = corr_shape[1]
+        for j in range(n_g):
+            current_line = 1
+            for k in range(n_t):
+                ws[current_column + str(current_line)] = corr[k, j]
+                current_line += 1
+            current_column = next_letter(current_column)
+    wb.save(fname_xlsx)
+
+
 def next_letter(letter):
     return chr(ord(letter) + 1)
 

@@ -344,6 +344,49 @@ def fcs_dualfocus_c(tau, c, D, w, SF, rhox, rhoy, offset, vx=0, vy=0):
     return G
 
 
+def fcs_circular_scanning(tau, N, tauD, w, SF, orbit_time, orbit_radius, offset, vx=0, vy=0):
+    """
+    Orbital scanning correlation formula
+
+    Parameters
+    ----------
+    tau : 1D numpy array
+        Lag time [s] (vector).
+    N : scalar
+        Number of particles in the focal volume
+    tauD : scalar
+        Diffusion time of the fluorophores/particles [s].
+    w : scalar
+        1/e^2 radius of the effective PSF [m]
+    SF : scalar
+        Shape factor of the PSF.
+    orbit_time : scalar
+        Orbit tine [s]
+    orbit_radius : scalar
+        Orbit radius [um]
+    offset : scalar
+        DC component of G.
+    vx : scalar, optional
+        Velocity in x direction. The default is 0.
+    vy : scalar, optional
+        Velocity in y direction. The default is 0.
+
+    Returns
+    -------
+    G : 1D numpy array
+        Vector with the autocorrelation G(tau).
+
+    """
+    
+    alpha = 2 * np.pi / orbit_time * tau
+    rho = orbit_radius * np.sqrt(2-2*np.cos(alpha)) # = 2 * Rcirc * abs(sin(alpha/2))
+    D = w**2 / 4 / tauD
+    
+    G = fcs_dualfocus(tau, N, D, w, SF, rho, 0, offset, vx=vx, vy=vy)
+    
+    return G
+
+
 def fcs_circular_scanning_c(tau, c, D, w, SF, orbit_time, orbit_radius, offset, vx=0, vy=0):
     """
     Orbital scanning correlation formula
@@ -386,6 +429,7 @@ def fcs_circular_scanning_c(tau, c, D, w, SF, orbit_time, orbit_radius, offset, 
     G = fcs_dualfocus_c(tau, c, D, w, SF, rho, 0, offset, vx=0, vy=0)
     
     return G
+
 
 def fcs_2c_2d_analytical(tau, N, tauD1, tauD2, F, alpha=1, T=0, tautrip=1e-6, offset=0, A=0, B=0):
     """
@@ -442,6 +486,7 @@ def fcs_2c_2d_analytical(tau, N, tauD1, tauD2, F, alpha=1, T=0, tautrip=1e-6, of
 
     return Gy
 
+
 def nanosecond_fcs_analytical(tau, A, c_ab, tau_ab, c_conf, tau_conf, c_rot, tau_rot, c_trip, tau_trip, tauD, SP):
     """
     Calculate the analytical fcs autocorrelation function for nanosecond fcs
@@ -489,6 +534,7 @@ def nanosecond_fcs_analytical(tau, A, c_ab, tau_ab, c_conf, tau_conf, c_rot, tau
     
     return G
 
+
 def uncoupled_reaction_diffusion(tau, A, tauD, SP, f_eq, k_off):
     """
     Uncoupled reaction and diffusion model
@@ -502,3 +548,73 @@ def uncoupled_reaction_diffusion(tau, A, tauD, SP, f_eq, k_off):
     G += (1-f_eq)*np.exp(-k_off * tau)
     
     return G
+
+
+def fcs_finitelength(tau, N, tauD, SF, brightness, T, Tsampling):
+    """
+    Fit function finite length, 3D free diffusion
+    Based on Kohler et al., Biophys. J., 2023
+
+    Parameters
+    ----------
+    tau : 1D numpy array
+        Lag time [s] (vector).
+    N : scalar
+        Number of particles on average in the focal volume [dimensionsless]
+        N = w0^2 * z0 * c * pi^(3/2).
+        with c the average particle concentration
+    tauD : scalar
+        Diffusion time species 1 [s].
+    SF : scalar
+        Shape factor.
+    brightness : scalar, optional
+        Brightness (photons per molecule per second)
+    T : scalar
+        Chunk duration [s]
+    Tsampling : scalar
+        Dwell time [s]
+
+    Returns
+    -------
+    G : 1D np.array
+        Correlation function.
+
+    """
+    
+    FCStheo = fcs_analytical(tau, N, tauD, SF, 0, 0, 0, 1)
+    gamma = compute_gamma(tau, N, tauD, T, Tsampling, gamma_factor=1, SP=SF, brightness=brightness)
+    G = FCStheo + gamma
+    return G
+
+
+def compute_gamma(tau, Nav, tau_D, T=10, T_s=10e-6, gamma_factor=0.51, SP=3, brightness=100):
+    """
+    Function needed for the finite length fit function   
+
+    """
+    # code by Lisa Cuneo, adapted to 3D by Eli (formula from Kohler et al, Eq. 26)
+    
+    k_medio = Nav * brightness * T_s
+    
+    # for 2D
+    # B = lambda t, tau : 2 * (tau)**2 * ( (1+t) * np.log(1+t) - t)
+    
+    r = SP
+    s = np.sqrt(r**2-1)
+    
+    # B2 (Eq. 26 Muller Biophys J. (86) 2004)
+    B = lambda x, tD : 4 * r * tD**2 / s * (r*s - s*np.sqrt(r**2+x) - (1+x) * np.log((r-s)*(s+np.sqrt(r**2+x))/np.sqrt(1+x)))
+    
+    # Eq. S23
+    kappa = lambda t : gamma_factor * brightness**2 * Nav * B(t / tau_D, tau_D)
+    
+    # Eq. S21
+    Gamma_C = - T_s**2/(T-tau)**2 * ( kappa(T) + kappa(abs(T-2*tau)) - 2*kappa(tau) ) / ( 2*(k_medio**2) )
+    
+    #` Eq. 8 main text
+    Gamma_S = - ( T_s * (T - 2 * tau) ) / ( (T - tau)**2 * k_medio )
+    Gamma_S = np.where(T - 2*tau > 0, Gamma_S, 0 )
+    
+    Gamma = Gamma_C + Gamma_S
+    
+    return Gamma

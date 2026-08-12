@@ -462,6 +462,7 @@ def restorelib_ffs(libfile, root=0):
                             indfitObj.paramidx = fparamidx
                             indfitObj.w0 = fw0
                             
+                            
                             cfitObj.fit_all_curves.append(indfitObj)
                           
                             

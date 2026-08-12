@@ -24,7 +24,7 @@ from ..tools.bindata import bindata_chunks
 from ..tools.calcdist_from_coord import list_of_pixel_pairs_at_distance
 
 """
-A correlations class object is returned whenever a correlations are calculated.
+A correlations class object is returned whenever correlations are calculated.
 E.g. G, time_trace = fcs_load_and_corr_split(file,...)
 The object contains fields such as G.central_average, containing a 2D array
 with the autocorrelation for the central element (averaged over all chunks of data)
@@ -297,6 +297,8 @@ def fcs2corr(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard
 
     """
     
+    data = data.astype(float)
+    
     # object from correlations class in which all correlation data is stored
     G = Correlations()
     
@@ -356,7 +358,7 @@ def fcs2corr(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard
             setattr(G, attrname, Gtemp)
             G.list_of_g_out.append(attrname)
 
-        elif i[0] == "C":
+        elif i[0] == "C" or i[0] == "S":
             # ----------------------------------------------------------------
             # crosscorrelation custom sum of channels
             # ----------------------------------------------------------------
@@ -376,6 +378,27 @@ def fcs2corr(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard
                 dataSum1 = extract_spad_data(data, i)
                 dataSum2 = dataSum1
             setattr(G, attrname, correlate(dataSum1, dataSum2, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm))
+            G.list_of_g_out.append(attrname)
+        
+        elif i[0] == "A":
+            # ----------------------------------------------------------------
+            # average of correlations
+            # ----------------------------------------------------------------
+            if list_of_g_out is not None:
+                attrname = next(list_of_g_out_enum)[1]
+            else:
+                attrname = i
+            av = i[1:]
+            list_of_ch = [int(ch_nr) for ch_nr in re.findall(r'\d+', av)]
+            print('Calculating custom average autocorrelation')
+            for i_corr, corr_single in enumerate(list_of_ch):
+                data_single_ch = extract_spad_data(data, int(corr_single))
+                if i_corr == 0:
+                    Gtemp = correlate(data_single_ch, data_single_ch, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
+                else:
+                    Gtemp += correlate(data_single_ch, data_single_ch, m=accuracy, binsize=binsize, deltat=dwell_time*1e-6, normalize=True, algorithm=algorithm)
+            Gtemp /= len(list_of_ch)
+            setattr(G, attrname, Gtemp)
             G.list_of_g_out.append(attrname)
             
         elif i == "crossCenter":
@@ -451,7 +474,7 @@ def fcs2corr(data, dwell_time, list_of_g=['central', 'sum3', 'sum5', 'chessboard
                 G.auto2 = Gtemp
                 G.list_of_g_out.append('auto2')
                 
-        elif i == "crossAll":
+        elif i == "crossAll" or i == "cross_all" or i == "crossall":
             # crosscorrelation every element with every other element
             if algorithm == "sparse_matrices":
                 if print_info:

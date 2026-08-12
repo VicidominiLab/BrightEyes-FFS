@@ -509,12 +509,16 @@ def make_fit_parameters_global_fit(param, fit_info, n_hist, global_param, lBound
     return fitparam_start, fixed_param, lowerBounds, upperBounds
 
 
-def make_2D_fit_parameter_array_global_fit(fitparam, fixedparam, fit_info, global_param, n_param, n_hist):
+def make_2D_fit_parameter_array_global_fit(fitparam, fixedparam, fit_info, global_param, n_param, n_hist, param_factors10=None):
     """
     Generate a 2D array with all parameter values for all histograms.
     Needed to convert fitted and fixed parameters to a 2D parameter array
     for global fitting
     """
+    
+    if param_factors10 is None:
+        param_factors10 = np.ones((n_param))
+    
     all_param = np.float64(np.zeros((n_param, n_hist)))
     fit_param_idx = 0
     fixed_param_idx = 0
@@ -524,24 +528,24 @@ def make_2D_fit_parameter_array_global_fit(fitparam, fixedparam, fit_info, globa
             if global_param[i]:
                 # parameter must be identical for all curves
                 for j in range(n_hist):
-                    all_param[i, j] = fitparam[fit_param_idx]
+                    all_param[i, j] = fitparam[fit_param_idx] * param_factors10[i]
                 fit_param_idx += 1
             else:
                 # parameter is different for each curve
                 for j in range(n_hist):
-                    all_param[i, j] = fitparam[fit_param_idx]
+                    all_param[i, j] = fitparam[fit_param_idx] * param_factors10[i]
                     fit_param_idx += 1
         else:
             # parameter is fixed
             if global_param[i]:
                 # parameter must be identical for all curves
                 for j in range(n_hist):
-                    all_param[i, j] = fixedparam[fixed_param_idx]
+                    all_param[i, j] = fixedparam[fixed_param_idx] * param_factors10[i]
                 fixed_param_idx += 1
             else:
                 # parameter is different for each curve
                 for j in range(n_hist):
-                    all_param[i, j] = fixedparam[fixed_param_idx]
+                    all_param[i, j] = fixedparam[fixed_param_idx] * param_factors10[i]
                     fixed_param_idx += 1
     return all_param
 

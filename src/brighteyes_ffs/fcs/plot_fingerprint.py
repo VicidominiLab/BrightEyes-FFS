@@ -148,7 +148,7 @@ def plot_fingerprint_luminosa(counts, cmap='inferno', plot=False, figsize=(5,5))
     return list(sx[:,0]), list(sx[:,1]), color_code
 
 
-def plot_fingerprint5x5(data, show_perc=True, dtype='int64', normalize=False, savefig=0, vminmax = 'auto'):
+def plot_fingerprint5x5(data, n_ch=25, show_perc=True, dtype='int64', normalize=False, figsize=(5,5), savefig=0, vminmax = 'auto'):
     """
     Make finger print plot of SPAD-fcs data with 25 channels.
     
@@ -189,7 +189,7 @@ def plot_fingerprint5x5(data, show_perc=True, dtype='int64', normalize=False, sa
             airy = np.sum(data, axis=0)
         else:
             airy = data
-        airy2 = airy[0:25]
+        airy2 = airy[0:n_ch]
     else:
         if hasattr(data, 'det24'):
             # data is fcs2arrivaltimes.ATimesData object with 25 elements
@@ -218,14 +218,13 @@ def plot_fingerprint5x5(data, show_perc=True, dtype='int64', normalize=False, sa
     airyMax = np.max(airy2)
     airyMin = np.min(airy2)
     airyCentPerc = (0.2 * (airyMax - airyMin) + airyMin) / airyMax * 100
-        
-    airy2 = airy2.reshape(5, 5)
+    
+    n_ch_sqrt = int(np.sqrt(n_ch))
+    
+    airy2 = airy2.reshape(n_ch_sqrt, n_ch_sqrt)
     
     
-    plt.figure()
-    fontSize = 20
-    plt.rcParams.update({'font.size': fontSize})
-    plt.rcParams['mathtext.rm'] = 'Arial'
+    plt.figure(figsize=figsize)
     
     if vminmax == 'auto':
         plt.imshow(airy2, cmap='hot', interpolation='nearest')
@@ -247,11 +246,10 @@ def plot_fingerprint5x5(data, show_perc=True, dtype='int64', normalize=False, sa
     ax.tick_params(axis=u'both', which=u'both',length=0)
     
     cbar = plt.colorbar()
-    cbar.ax.tick_params(labelsize=fontSize)
-
+    
     if type(show_perc) is str and show_perc=="numbers":
-        for i in range(5):
-            for j in range(5):
+        for i in range(n_ch_sqrt):
+            for j in range(n_ch_sqrt):
                 if vminmax == 'auto':
                     perc = round(airy2[i, j] / airyMax * 100)
                 else:
@@ -261,8 +259,8 @@ def plot_fingerprint5x5(data, show_perc=True, dtype='int64', normalize=False, sa
                     c="w"
                 plt.text(j, i, '{:.1f}'.format(airy2[i, j]), ha="center", va="center", color=c, fontsize=18)    
     elif show_perc:
-        for i in range(5):
-            for j in range(5):
+        for i in range(n_ch_sqrt):
+            for j in range(n_ch_sqrt):
                 if vminmax == 'auto':
                     perc = round(airy2[i, j] / airyMax * 100)
                 else:
@@ -279,6 +277,17 @@ def plot_fingerprint5x5(data, show_perc=True, dtype='int64', normalize=False, sa
         plt.savefig(savefig, format=savefig[-3:])
 
     return airy
+
+def plot_fingerprint7x7(data, show_perc=False, figsize=(5,5), dtype='int64', normalize=False, savefig=0, vminmax = 'auto'):
+    _ = plot_fingerprint5x5(data,
+                            n_ch=49,
+                            show_perc=show_perc,
+                            figsize=figsize,
+                            dtype=dtype,
+                            normalize=normalize,
+                            savefig=savefig,
+                            vminmax = vminmax)
+    return
 
 def plot_det_dist():
     det = []

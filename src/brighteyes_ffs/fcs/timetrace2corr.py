@@ -88,6 +88,13 @@ def autocorrelation_wiener_khinchin(data1, data2, macro_time=1.0):
     lags = np.arange(n)
     mean1 = c1[n - lags] / overlap[::-1]
     mean2 = (c2[n] - c2[lags]) / overlap[::-1]
+    
+    # prevent division by zero
+    valid = (mean1 > 0) & (mean2 > 0)
+    g = g[valid]
+    mean1 = mean1[valid]
+    mean2 = mean2[valid]
+    
     g /= mean1
     g /= mean2
     

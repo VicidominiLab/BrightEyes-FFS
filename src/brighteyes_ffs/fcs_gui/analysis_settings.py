@@ -594,7 +594,7 @@ class CorrFit():
             fitfunction = fit.fitfunction_label
             power10 = fit.param_factors10
             for j in range(len(fit.paramidx)):
-                fitabsv = fit.startvalues[fit.paramidx[j]] / power10[j]
+                fitabsv = fit.startvalues[fit.paramidx[j]]# / power10[j]
                 fitres_array[j, i] = fitabsv
                 if np.abs(fitabsv) < 1e-2 or np.abs(fitabsv) > 999:
                     fitresString = str(fitabsv)[0:10]
@@ -760,7 +760,7 @@ class FitSingleObj:
         Nparam = fitmodel.num_param + 1 # weighted fit
         self.minbound = np.array(fitmodel.param_minbound)
         self.maxbound = np.array(fitmodel.param_maxbound)
-        self.param_factors10 = np.array(fitmodel.param_factors10)
+        self.param_factors10 = np.ones_like(self.maxbound) if self.maxbound is not None else None # np.array(fitmodel.param_factors10)
         self.data = data # central, sum3, sum5, etc.
         self.fitfunction_label = fitmodel.model # more readable name of the fit function
         self.fitrange = fitrange
@@ -774,17 +774,20 @@ class FitSingleObj:
         if paramind is not None:
             for i in range(len(paramind)):
                 fitarrayTemp[paramind[i]] = fitarray[i]
-                startvTemp[paramind[i]] = float(startvalues[i]) * fitmodel.param_factors10[i]
+                startvTemp[paramind[i]] = float(startvalues[i])# * fitmodel.param_factors10[i]
+                self.param_factors10[paramind[i]] = fitmodel.param_factors10[i]
             fitarrayTemp[Nparam-1] = fitarray[-1]
         else:
             fitarrayTemp = None
             startvTemp = None
-        
+            
+            
         self.fitarray = fitarrayTemp
         self.startvalues = startvTemp
         self.paramidx = paramind # array indices with the parameters of interest (for startvalues and fitarray)
         self.w0 = None # beam waist (nm)
         self.D = None # diffusion coefficient (µm^2/s)
+        
     
     def update(self, fitresult=None, startvalues=None, w0=None, D=None):
         # start values contains two lists [startv, fitv]
