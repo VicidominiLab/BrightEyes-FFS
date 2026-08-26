@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.special import erfcx
 
 
 def fcs_analytical(tau, N, tauD, SF, offset, A=0, B=0, alpha=1):
@@ -586,6 +587,46 @@ def fcs_finitelength(tau, N, tauD, SF, brightness, T, Tsampling):
     G = FCStheo + gamma
     return G
 
+
+def fcs_1c_2dgl(tau, N, tauD, SF, offset):
+    """
+    Fit function 1 componet, 3D free diffusion
+    2D gaussian plus lorentzian in z
+
+    Parameters
+    ----------
+    tau : 1D numpy array
+        Lag time [s] (vector).
+    N : scalar
+        Number of particles on average in the focal volume [dimensionsless]
+        N = w0^2 * z0 * c * pi^(3/2).
+        with c the average particle concentration
+    tauD : scalar
+        Diffusion time species 1 [s].
+    SF : scalar
+        Shape factor.
+    Offset : scalar
+        Offset
+
+    Returns
+    -------
+    G : 1D np.array
+        Correlation function.
+
+    """
+    # standard autocorrelation function
+    Gy = np.sqrt(np.pi) / N * SF / (1 + (tau / tauD)) / np.sqrt(tau / tauD)
+    Gy *= erfcx(np.sqrt(tauD / tau) * SF)
+    Gy += offset  # offset
+
+    if type(Gy) == np.float64:
+        Garray = np.zeros((1, 2))
+    else:
+        Garray = np.zeros((np.size(Gy, 0), 2))
+    Garray[:, 0] = tau
+    Garray[:, 1] = Gy
+
+    return Gy
 
 def compute_gamma(tau, Nav, tau_D, T=10, T_s=10e-6, gamma_factor=0.51, SP=3, brightness=100):
     """
