@@ -590,7 +590,7 @@ def fcs_finitelength(tau, N, tauD, SF, brightness, T, Tsampling):
 
 def fcs_1c_2dgl(tau, N, tauD, SF, offset):
     """
-    Fit function 1 componet, 3D free diffusion
+    Fit function 1 component, 3D free diffusion
     2D gaussian in xy plus lorentzian in z
     See Leclerc et al., Physical Rev. Applied 26, 2026
 
