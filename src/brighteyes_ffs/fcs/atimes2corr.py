@@ -1,5 +1,6 @@
 import numpy as np
 from .extract_spad_photon_streams import extract_spad_photon_streams
+from scipy.sparse import csr_array
 
 
 class Correlations:
@@ -104,7 +105,6 @@ def atimes_2_corrs(data, list_of_corr, accuracy=50, taumax="auto", perform_coars
     
     return G
 
-
 def atimes_2_corr(t0, t1, w0, w1, macroTime, accuracy=50, taumax="auto", perform_coarsening=True, logtau=True, min_step=10):
     """
     Calculate correlation between two photon streams with arrival times t0 and t1
@@ -201,6 +201,54 @@ def atimes_2_corr(t0, t1, w0, w1, macroTime, accuracy=50, taumax="auto", perform
     
     return np.transpose([tau, g])
 
+def atimes_2_all_crosscorr(data, macroTime, accuracy=50, taumax="auto", perform_coarsening=True, logtau=True, min_step=0):
+    # tchunk[:,0] -= tchunk[0, 0]
+    # coarse factor
+    c = 1
+
+    for i in range(min_step):
+        # change in step size: perform coarsening
+        c *= 2
+        data = time_coarsening_all_ch(data)
+
+    t = 0
+    tau = []
+    if taumax=="auto":
+        taumax = data[-1,0] / 10
+    step = int(2 ** min_step)
+
+    if logtau:
+        while t <= taumax:
+            for i in range(accuracy):
+                t += step
+                # make sure t is multiple of step (needed for coarsing)
+                t = int(np.floor(t / step) * step)
+                tau.append(t)
+            step *= 2
+        tau = [i for i in tau if i <= taumax]
+        tau = [0] + tau
+    else:
+        taumax = int(taumax)
+        tau = np.linspace(0, taumax, taumax + 1, dtype=int)
+
+    N = len(tau)
+    n_ch = np.shape(data)[1]-1
+    g_all = np.zeros((n_ch, n_ch, N))
+
+    print(N)
+
+    for i in range(N):
+        print(i)
+        t = tau[i]
+        g_all[:, :, i] = all_crosscorr_at_tau(data, t / c, c)
+        if perform_coarsening and np.mod(i, accuracy) == 0 and i != 0:
+            # change in step size: perform coarsening
+            c *= 2
+            data = time_coarsening_all_ch(data)
+
+    tau = np.asarray(tau) * macroTime
+
+    return tau, g_all
 
 def atimes_2_corr_single(t0, t1, w0, w1, tau, c):
     """
@@ -256,6 +304,38 @@ def atimes_2_corr_single(t0, t1, w0, w1, tau, c):
     
     return g
 
+def all_crosscorr_at_tau(data, tau, c):
+    # overlap time
+    T = (data[-1, 0] - tau + 1) * c
+    if T <= 0:
+        return 0
+
+    times = data[:, 0]
+
+    # `idx_late` indexes rows at time T.
+    # `idx_early` indexes rows originally at time T - tau.
+    _, idx_late, idx_early = np.intersect1d(times, times + tau, assume_unique=True, return_indices=True,)
+
+    late_counts = data[idx_late, 1:]    # shape: (n_matches, 25)
+    early_counts = data[idx_early, 1:]  # shape: (n_matches, 25)
+
+    A_sparse = csr_array(late_counts.T)
+    B_sparse = csr_array(early_counts)
+
+    g_sparse = A_sparse @ B_sparse
+    g = g_sparse.toarray()
+    g = g / T / c
+
+    index = np.searchsorted(times, tau, side="left")
+    I0 = np.sum((data[index:,1:]), 0)
+    index = np.searchsorted(times, data[-1, 0]-tau, side="left")
+    I1 = np.sum((data[:index,1:]), 0)
+
+    norm = np.outer(I0/T, I1/T)
+    result = np.zeros_like(norm, dtype=np.result_type(norm, float))
+    np.divide(1, norm, out=result, where=norm != 0)
+
+    return g * result - 1
 
 def time_coarsening(t, w):
     # divide all arrival times by 2
@@ -272,4 +352,19 @@ def time_coarsening(t, w):
     t = np.delete(t, ind+1)
     
     return [t, w, ind]
-    
+
+def time_coarsening_all_ch(data):
+    # Bin each pair of consecutive time bins into one:
+    # 0, 1 -> 0; 2, 3 -> 1; 4, 5 -> 2; ...
+    coarse_time = np.floor_divide(data[:, 0], 2)
+
+    # `group` gives the output row for every input row.
+    unique_time, group = np.unique(coarse_time, return_inverse=True)
+
+    reduced = np.zeros((unique_time.size, data.shape[1]), dtype=np.result_type(data.dtype, coarse_time.dtype),)
+    reduced[:, 0] = unique_time
+
+    # Add all 25 photon-count columns for rows in the same coarse bin.
+    np.add.at(reduced[:, 1:], group, data[:, 1:])
+
+    return reduced

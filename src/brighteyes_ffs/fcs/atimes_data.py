@@ -16,7 +16,17 @@ class ATimesData:
     def __init__(self):
         self.macrotime = 1e-12
         self.microtime = 1e-12
-    
+
+    @property
+    def data(self):
+        all_ch = [k for k in dir(self) if k.startswith('det')]
+        all_data = np.concatenate(
+            [np.column_stack((x := getattr(self, ch), np.full(x.shape[0], int(ch[3:])), np.full(x.shape[0], int(1))))
+             for ch in all_ch], axis=0
+        )
+        return all_data[np.argsort(all_data[:, 0], kind="stable")].astype(int)
+
+
     @property
     def all_channels(self):
         all_ch = [int(k[3:]) for k in dir(self) if k.startswith('det')]
@@ -26,7 +36,30 @@ class ATimesData:
     @property
     def num_channels(self):
         return len(self.all_channels)
-    
+
+    def to_time_channel_array(self):
+        n_channels = self.num_channels
+        all_data = self.data
+        times = all_data[:, 0]
+        channels = all_data[:, 2].astype(np.intp)
+        channels = channels - np.min(channels)
+        counts = all_data[:, 3]
+
+        # Sorted unique timestamps and the output-row index of each input row
+        unique_times, time_index = np.unique(times, return_inverse=True)
+
+        result = np.zeros(
+            (unique_times.size, n_channels + 1),
+            dtype=np.result_type(all_data.dtype, counts.dtype),
+        )
+        result[:, 0] = unique_times
+        valid = (0 <= channels) & (channels < n_channels)
+
+        # Sum counts when several rows have the same (time, channel).
+        np.add.at(result[:, 1:], (time_index[valid], channels[valid]), counts[valid],)
+
+        return result
+
     def duration(self, subtract_start_time=False, return_period=False):
         return atimes_data_2_duration(self, self.macrotime, subtract_start_time, return_period)
     
