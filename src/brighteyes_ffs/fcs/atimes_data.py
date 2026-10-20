@@ -19,12 +19,13 @@ class ATimesData:
 
     @property
     def data(self):
+        # [macro, micro, channel, filter0, filter1, filter2, etc.]
         all_ch = [k for k in dir(self) if k.startswith('det')]
         all_data = np.concatenate(
-            [np.column_stack((x := getattr(self, ch), np.full(x.shape[0], int(ch[3:])), np.full(x.shape[0], int(1))))
+            [np.column_stack((x := getattr(self, ch)[:, :2], np.full(x.shape[0], int(ch[3:])), np.full(x.shape[0], int(1)), getattr(self, ch)[:, 2:]))
              for ch in all_ch], axis=0
         )
-        return all_data[np.argsort(all_data[:, 0], kind="stable")].astype(int)
+        return all_data[np.argsort(all_data[:, 0], kind="stable")]
 
 
     @property
@@ -37,13 +38,17 @@ class ATimesData:
     def num_channels(self):
         return len(self.all_channels)
 
-    def to_time_channel_array(self):
+    @property
+    def num_filters(self):
+        return np.shape(getattr(self, self.all_channels[0]))[1]-2
+
+    def to_time_channel_array(self, filter_nr = 0):
         n_channels = self.num_channels
         all_data = self.data
         times = all_data[:, 0]
         channels = all_data[:, 2].astype(np.intp)
         channels = channels - np.min(channels)
-        counts = all_data[:, 3]
+        counts = all_data[:, 3+filter_nr]
 
         # Sorted unique timestamps and the output-row index of each input row
         unique_times, time_index = np.unique(times, return_inverse=True)

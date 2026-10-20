@@ -1,7 +1,7 @@
 import multiprocessing
 import re
 from joblib import Parallel, delayed
-from .atimes2corr import atimes_2_corr
+from .atimes2corr import atimes_2_corr, atimes_2_all_crosscorr
 from .fcs2corr import Correlations, Correlations_chunks
 from .atimes_data import atimes_data_2_duration, load_atimes_data, atimes_data_2_channels, atimes_data_attr_2_ch
 import numpy as np
@@ -123,10 +123,10 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
         object with [N x 2] matrices with tau and G values
 
     """
-    
+
     all_ch = atimes_data_2_channels(data) # number of ch
     duration = atimes_data_2_duration(data, macrotime=data.macrotime, subtract_start_time=False) # s
-    
+
     n_ch = len(all_ch)
     if n_ch < 1:
         return None
@@ -139,7 +139,52 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
     if "crossAll" in list_of_g or "cross_all" in list_of_g or "crossall" in list_of_g:
         start_ch = int(all_ch[0][3:])
         stop_ch = int(all_ch[-1][3:])+1
-        list_of_g = convert_crossall_to_list_of_g(stop_ch, start_ch)
+        #list_of_g = convert_crossall_to_list_of_g(stop_ch, start_ch)
+
+        progress = 0
+        n_filter = data.num_filters + 1
+        corrs_chunks = []
+        for filt in range(n_filter):
+            if print_info:
+                print("Filter " + str(filt))
+            data_xcorr = data.to_time_channel_array(filt)
+            data_xcorr[:, 0] = data_xcorr[:, 0] - data_xcorr[0, 0]
+            duration = data_xcorr[-1, 0] * data.macrotime # s
+            n_chunks = int(np.floor(duration / split))
+            n_ch = np.shape(data_xcorr)[1] - 1
+            G = Correlations()
+
+            for c in range(n_chunks):
+                progress += 1
+                if root != 0:
+                    root.progress = progress / n_chunks / n_filter
+                if print_info:
+                    print("     Calculating correlation chunk " + str(c) + " of " + str(n_chunks))
+
+                tstart = c * split / data.macrotime
+                tstop = (c + 1) * split / data.macrotime
+                start = np.searchsorted(data_xcorr[:,0], tstart, side="left")
+                stop = np.searchsorted(data_xcorr[:,0], tstop, side="right")
+
+                tau, g_all = atimes_2_all_crosscorr(data_xcorr[start:stop,:], data.macrotime, accuracy=accuracy, taumax=taumax, perform_coarsening=perform_coarsening, logtau=logtau, min_step=min_step)
+
+                if progress == 1:
+                    n_times = len(tau)
+                    g_cross_all = np.zeros((1, n_chunks, n_ch, n_ch, n_times, n_filter+1))
+                    corrs_chunks.append(Correlations_chunks(np.zeros((n_chunks, data.num_channels, data.num_channels, n_times, 1+n_filter))))
+
+                g_cross_all[0, c, :, :, :, filt] = g_all
+
+                corrs_chunks[0].chunks[c,:,:,:,filt+1] = g_all
+                corrs_chunks[0].chunks[c,:,:,:,0] = tau
+
+            for i in range(data.num_channels):
+                for j in range(data.num_channels):
+                    name = data.all_channels[i] + 'x' + data.all_channels[j][3:]
+                    G.add_corr_chunks(name, corrs_chunks[0].chunks[:,i, j, :, :])
+                    G.list_of_g_out.append(name)
+
+        return G
         n_ch = stop_ch
         calc_all_xcorr = True
     elif averaging is not None:

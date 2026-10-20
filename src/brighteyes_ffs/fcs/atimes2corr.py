@@ -91,7 +91,7 @@ def atimes_2_corrs(data, list_of_corr, accuracy=50, taumax="auto", perform_coars
             setattr(G, corrname + "F" + str(j) + '_average', Gav)
     
     if calcAv:
-        # calculate average correlation
+        # calculate average correlation (depricated)
         for f in range(np.shape(dataExtr)[1] - 1):
             # start with correlation of detector 20 (last one)
             Gav = getattr(G, 'det' + str(Ndet-1) + 'F' + str(f) + '_average')
@@ -235,10 +235,7 @@ def atimes_2_all_crosscorr(data, macroTime, accuracy=50, taumax="auto", perform_
     n_ch = np.shape(data)[1]-1
     g_all = np.zeros((n_ch, n_ch, N))
 
-    print(N)
-
     for i in range(N):
-        print(i)
         t = tau[i]
         g_all[:, :, i] = all_crosscorr_at_tau(data, t / c, c)
         if perform_coarsening and np.mod(i, accuracy) == 0 and i != 0:
