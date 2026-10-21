@@ -16,15 +16,24 @@ class ATimesData:
     def __init__(self):
         self.macrotime = 1e-12
         self.microtime = 1e-12
+        self.tcspc = True
 
     @property
     def data(self):
         # [macro, micro, channel, filter0, filter1, filter2, etc.]
         all_ch = [k for k in dir(self) if k.startswith('det')]
-        all_data = np.concatenate(
-            [np.column_stack((x := getattr(self, ch)[:, :2], np.full(x.shape[0], int(ch[3:])), np.full(x.shape[0], int(1)), getattr(self, ch)[:, 2:]))
-             for ch in all_ch], axis=0
-        )
+        if self.tcspc:
+            all_data = np.concatenate(
+                [np.column_stack((x := getattr(self, ch)[:, :2], np.full(x.shape[0], int(ch[3:])), np.full(x.shape[0], int(1)), getattr(self, ch)[:, 2:]))
+                 for ch in all_ch], axis=0
+            )
+        else:
+            # [macro, micro=0, channel, intensity]
+            all_data = np.concatenate(
+                [np.column_stack(
+                    (x := getattr(self, ch)[:, :2], np.full(x.shape[0], int(ch[3:])), getattr(self, ch)[:, 2:]))
+                 for ch in all_ch], axis=0
+            )
         return all_data[np.argsort(all_data[:, 0], kind="stable")]
 
 
@@ -42,12 +51,13 @@ class ATimesData:
     def num_filters(self):
         return np.shape(getattr(self, self.all_channels[0]))[1]-2
 
-    def to_time_channel_array(self, filter_nr = 0):
+    def to_time_channel_array(self, filter_nr = 0, select_channels='all'):
         n_channels = self.num_channels
         all_data = self.data
         times = all_data[:, 0]
         channels = all_data[:, 2].astype(np.intp)
-        channels = channels - np.min(channels)
+        channel_offset = np.min(channels)
+        channels = channels - channel_offset
         counts = all_data[:, 3+filter_nr]
 
         # Sorted unique timestamps and the output-row index of each input row
@@ -63,7 +73,27 @@ class ATimesData:
         # Sum counts when several rows have the same (time, channel).
         np.add.at(result[:, 1:], (time_index[valid], channels[valid]), counts[valid],)
 
-        return result
+        # reduce array in case only subsets are needed (e.g. central, sum3, sum5)
+        if select_channels == 'all':
+            return result
+
+        n_groups = len(select_channels)
+        # Maps input channels to requested output groups.
+        selector = np.zeros((n_channels, n_groups), dtype=result.dtype)
+
+        for group_index, channels in enumerate(select_channels):
+            channels = np.asarray(channels, dtype=np.intp)
+
+            if np.any(channels < 0) or np.any(channels >= n_channels):
+                raise ValueError(f"Invalid channel number in group {group_index}")
+
+            selector[channels, group_index] = 1
+
+        result_selected = np.empty((np.shape(result)[0], 1 + n_groups), dtype=result.dtype)
+        result_selected[:, :1] = result[:, :1]
+        result_selected[:, 1:] = result[:, 1:] @ selector
+
+        return result_selected
 
     def duration(self, subtract_start_time=False, return_period=False):
         return atimes_data_2_duration(self, self.macrotime, subtract_start_time, return_period)

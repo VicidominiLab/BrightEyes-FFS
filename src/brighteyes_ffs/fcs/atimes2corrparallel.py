@@ -88,7 +88,7 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
 
     Parameters
     ----------
-    data : Correlations object
+    data : arrival times object
         Object having fields det0, det1, ..., det24 which contain
         the macrotimes of the photon arrivals [in a.u.].
         In addition, the object must have a field "data.macrotime" containing
@@ -131,9 +131,6 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
     if n_ch < 1:
         return None
     
-    if taumax == "auto":
-        taumax = split / 10 * 1e12 # s
-    
     calc_all_xcorr = False
     start_ch = 0
     if "crossAll" in list_of_g or "cross_all" in list_of_g or "crossall" in list_of_g:
@@ -143,11 +140,13 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
 
         progress = 0
         n_filter = data.num_filters + 1
-        corrs_chunks = []
+        if not data.tcspc:
+            n_filter = 1
+
         for filt in range(n_filter):
             if print_info:
                 print("Filter " + str(filt))
-            data_xcorr = data.to_time_channel_array(filt)
+            data_xcorr = data.to_time_channel_array(filt, select_channels=list_of_g[1])
             data_xcorr[:, 0] = data_xcorr[:, 0] - data_xcorr[0, 0]
             duration = data_xcorr[-1, 0] * data.macrotime # s
             n_chunks = int(np.floor(duration / split))
@@ -170,18 +169,18 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
 
                 if progress == 1:
                     n_times = len(tau)
-                    g_cross_all = np.zeros((1, n_chunks, n_ch, n_ch, n_times, n_filter+1))
-                    corrs_chunks.append(Correlations_chunks(np.zeros((n_chunks, data.num_channels, data.num_channels, n_times, 1+n_filter))))
+                    g_cross_all = np.zeros((1, n_chunks, np.shape(g_all)[1], np.shape(g_all)[1], n_times, n_filter+1))
+                    corrs = Correlations_chunks(np.zeros((n_chunks, np.shape(g_all)[1], np.shape(g_all)[1], n_times, 1+n_filter)))
 
                 g_cross_all[0, c, :, :, :, filt] = g_all
 
-                corrs_chunks[0].chunks[c,:,:,:,filt+1] = g_all
-                corrs_chunks[0].chunks[c,:,:,:,0] = tau
+                corrs.chunks[c,:,:,:,filt+1] = g_all
+                corrs.chunks[c,:,:,:,0] = tau
 
-            for i in range(data.num_channels):
-                for j in range(data.num_channels):
+            for i in range(np.shape(g_all)[1]):
+                for j in range(np.shape(g_all)[1]):
                     name = data.all_channels[i] + 'x' + data.all_channels[j][3:]
-                    G.add_corr_chunks(name, corrs_chunks[0].chunks[:,i, j, :, :])
+                    G.add_corr_chunks(name, corrs.chunks[:,i, j, :, :])
                     G.list_of_g_out.append(name)
 
         return G
@@ -191,6 +190,8 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
         n_ch = int(all_ch[-1][3:])
     
     G = Correlations()
+    if taumax == "auto":
+        taumax = split / 10 * 1e12 # s
     
     calcAv = False
     if 'av' in list_of_g:

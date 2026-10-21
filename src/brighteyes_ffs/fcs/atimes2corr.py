@@ -202,7 +202,9 @@ def atimes_2_corr(t0, t1, w0, w1, macroTime, accuracy=50, taumax="auto", perform
     return np.transpose([tau, g])
 
 def atimes_2_all_crosscorr(data, macroTime, accuracy=50, taumax="auto", perform_coarsening=True, logtau=True, min_step=0):
-    # tchunk[:,0] -= tchunk[0, 0]
+    # start from zero
+    data[:,0] =  data[:,0] - data[0, 0]
+
     # coarse factor
     c = 1
 
@@ -303,7 +305,7 @@ def atimes_2_corr_single(t0, t1, w0, w1, tau, c):
 
 def all_crosscorr_at_tau(data, tau, c):
     # overlap time
-    T = (data[-1, 0] - tau + 1) * c
+    T = (data[-1, 0] - data[0, 0] - tau + 1) * c
     if T <= 0:
         return 0
 
@@ -325,7 +327,7 @@ def all_crosscorr_at_tau(data, tau, c):
 
     index = np.searchsorted(times, tau, side="left")
     I0 = np.sum((data[index:,1:]), 0)
-    index = np.searchsorted(times, data[-1, 0]-tau, side="left")
+    index = np.searchsorted(times, data[-1, 0]-tau, side="right")
     I1 = np.sum((data[:index,1:]), 0)
 
     norm = np.outer(I0/T, I1/T)
