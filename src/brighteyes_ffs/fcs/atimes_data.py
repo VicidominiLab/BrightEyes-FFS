@@ -52,6 +52,8 @@ class ATimesData:
         return np.shape(getattr(self, self.all_channels[0]))[1]-2
 
     def to_time_channel_array(self, filter_nr = 0, select_channels='all'):
+        # return list of photons with for each photon:
+        # [macrotime, weights_ch0, weights_ch1, ..., weights_chn]
         n_channels = self.num_channels
         all_data = self.data
         times = all_data[:, 0]
@@ -180,7 +182,7 @@ class ATimesData:
         setattr(self, 'hshifts', hshifts)
 
 
-def load_atimes_data(fname, channels='auto', sysclk_MHz=240, perform_calib=True):
+def load_atimes_data(fname, channels='auto', sysclk_MHz=240, perform_calib=False):
     """
     Load multichannel arrival times data from .hdf5 file and store in data object
     for further processing. Used for data collected by the BrightEyes-TTM.
@@ -233,6 +235,15 @@ def load_atimes_data(fname, channels='auto', sysclk_MHz=240, perform_calib=True)
         with h5py.File(fname, 'r') as f:
             for ch in channels:
                 setattr(data, 'det' + ch, f['det' + ch][()])
+            try:
+                macrotime = f['info'].attrs['macrotime']
+                microtime = f['info'].attrs['microtime']
+                data.tcspc = f['info'].attrs['tcspc']
+                data.macrotime = macrotime
+                data.microtime = microtime
+            except:
+                pass
+
         f.close()
         
     # -------------------- PTU file --------------------
@@ -350,7 +361,7 @@ def write_atimes_data(data, channels, fname):
             f.create_dataset('det' + str(ch), data=getattr(data, 'det' + str(ch)))
     
 
-def atimes_data_2_duration(data, macrotime=1.0, subtract_start_time=False, return_period=False):
+def atimes_data_2_duration(data, macrotime='auto', subtract_start_time=False, return_period=False):
     """
     Return duration of a TCSPC measurement or duration of a pulse period
 
@@ -361,7 +372,7 @@ def atimes_data_2_duration(data, macrotime=1.0, subtract_start_time=False, retur
         with the first column the macrotimes, and the second column the microtimes.
     macrotime : float, optional
         Macrotime units in s. Typically the macrotimes are in ps, hence 1e-12.
-        The default is 1.
+        The default is 'auto', in which case the macrotime is read from data.macrotime (in s).
     subtract_start_time : boolean
         Subtract the start time, so duration = last photon time - first photon time
     return_period : boolean
@@ -375,6 +386,9 @@ def atimes_data_2_duration(data, macrotime=1.0, subtract_start_time=False, retur
         Or Maximum microtime
 
     """
+    if macrotime == 'auto':
+        macrotime = data.macrotime # s
+
     all_ch = atimes_data_2_channels(data)
     
     column = 0

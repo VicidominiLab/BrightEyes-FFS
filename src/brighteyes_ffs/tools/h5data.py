@@ -29,12 +29,18 @@ class h5data():
     def tbinpx(self):
         # number of time bins per pixel
         with h5py.File(self.fname, "r") as f:
-            return(f['configurationGUI_beforeStart'].attrs['timebin_per_pixel'])
+            try:
+                return(f['configurationGUI_beforeStart'].attrs['timebin_per_pixel'])
+            except:
+                return 1.0
     
     def tres(self):
         # time resolution in us
         with h5py.File(self.fname, "r") as f:
-            return(f['configurationGUI_beforeStart'].attrs['time_resolution'])
+            try:
+                return(f['configurationGUI_beforeStart'].attrs['time_resolution'])
+            except:
+                return (f['info'].attrs['macrotime'] * 1e6)
     
     def pxdwelltime(self):
         # pixel dwell time in us

@@ -149,7 +149,9 @@ def atimes_2_corr(t0, t1, w0, w1, macroTime, accuracy=50, taumax="auto", perform
     
     # check max tau value
     if taumax=="auto":
-        taumax = t0[-1] / 10
+        taumax = t0[-1] / 10 # units of macrotime
+    else:
+        taumax = taumax / macroTime
     
     # weights
     if len(w0) == 1:
@@ -163,30 +165,15 @@ def atimes_2_corr(t0, t1, w0, w1, macroTime, accuracy=50, taumax="auto", perform
     for i in range(min_step):
     # change in step size: perform coarsening
         c *= 2
-        [t0, w0, ind] = time_coarsening(t0, w0)
-        [t1, w1, ind] = time_coarsening(t1, w1)
+        [t0, w0] = time_coarsening(t0, w0)
+        [t1, w1] = time_coarsening(t1, w1)
     
     # generate list [tau] with logarithmically distributed tau values
-    t = 0
-    tau = []
-    step = int(2**min_step)
-    if logtau:
-        while t <= taumax:
-            for i in range(accuracy):
-                t += step
-                # make sure t is multiple of step (needed for coarsing)
-                t = int(np.floor(t / step) * step)
-                tau.append(t)
-            step *= 2
-        tau = [i for i in tau if i <= taumax]
-        tau = [0] + tau
-    else:
-        tau = np.linspace(0, taumax, taumax+1, dtype=int)
+    tau = generate_list_of_tau_values(taumax, accuracy, min_step, logtau)
     
     # create array for g and weights
     N = len(tau)
     g = np.zeros(N)
-    
     
     for i in range(N):
         t = tau[i]
@@ -194,8 +181,8 @@ def atimes_2_corr(t0, t1, w0, w1, macroTime, accuracy=50, taumax="auto", perform
         if perform_coarsening and np.mod(i, accuracy) == 0 and i != 0:
             # change in step size: perform coarsening
             c *= 2
-            [t0, w0, ind] = time_coarsening(t0, w0)
-            [t1, w1, ind] = time_coarsening(t1, w1)
+            [t0, w0] = time_coarsening(t0, w0)
+            [t1, w1] = time_coarsening(t1, w1)
         
     tau = np.asarray(tau) * macroTime
     
@@ -205,6 +192,9 @@ def atimes_2_all_crosscorr(data, macroTime, accuracy=50, taumax="auto", perform_
     # start from zero
     data[:,0] =  data[:,0] - data[0, 0]
 
+    # duration in macrotime units
+    duration = data[-1, 0]
+
     # coarse factor
     c = 1
 
@@ -213,25 +203,12 @@ def atimes_2_all_crosscorr(data, macroTime, accuracy=50, taumax="auto", perform_
         c *= 2
         data = time_coarsening_all_ch(data)
 
-    t = 0
-    tau = []
     if taumax=="auto":
-        taumax = data[-1,0] / 10
-    step = int(2 ** min_step)
-
-    if logtau:
-        while t <= taumax:
-            for i in range(accuracy):
-                t += step
-                # make sure t is multiple of step (needed for coarsing)
-                t = int(np.floor(t / step) * step)
-                tau.append(t)
-            step *= 2
-        tau = [i for i in tau if i <= taumax]
-        tau = [0] + tau
+        taumax = duration / 10 # macrotime units
     else:
-        taumax = int(taumax)
-        tau = np.linspace(0, taumax, taumax + 1, dtype=int)
+        taumax = taumax / macroTime
+
+    tau = generate_list_of_tau_values(taumax, accuracy, min_step, logtau)
 
     N = len(tau)
     n_ch = np.shape(data)[1]-1
@@ -239,7 +216,7 @@ def atimes_2_all_crosscorr(data, macroTime, accuracy=50, taumax="auto", perform_
 
     for i in range(N):
         t = tau[i]
-        g_all[:, :, i] = all_crosscorr_at_tau(data, t / c, c)
+        g_all[:, :, i] = all_crosscorr_at_tau(data, t / c)
         if perform_coarsening and np.mod(i, accuracy) == 0 and i != 0:
             # change in step size: perform coarsening
             c *= 2
@@ -279,7 +256,7 @@ def atimes_2_corr_single(t0, t1, w0, w1, tau, c):
 
     """
     # overlap time
-    T = (t0[-1] - tau + 1) * c
+    T = (t0[-1] - t0[0] - tau + 1) * c
     if T <= 0:
         return 0
     
@@ -303,9 +280,9 @@ def atimes_2_corr_single(t0, t1, w0, w1, tau, c):
     
     return g
 
-def all_crosscorr_at_tau(data, tau, c):
+def all_crosscorr_at_tau(data, tau):
     # overlap time
-    T = (data[-1, 0] - data[0, 0] - tau + 1) * c
+    T = (data[-1, 0] - data[0, 0] - tau + 1)
     if T <= 0:
         return 0
 
@@ -323,7 +300,7 @@ def all_crosscorr_at_tau(data, tau, c):
 
     g_sparse = A_sparse @ B_sparse
     g = g_sparse.toarray()
-    g = g / T / c
+    g = g / T
 
     index = np.searchsorted(times, tau, side="left")
     I0 = np.sum((data[index:,1:]), 0)
@@ -337,20 +314,20 @@ def all_crosscorr_at_tau(data, tau, c):
     return g * result - 1
 
 def time_coarsening(t, w):
-    # divide all arrival times by 2
-    t = np.floor(t / 2)
-    
-    # check for duplicate values
-    ind = np.where(np.diff(t) == 0)[0]
-    
-    # sum weights
-    w[ind] += w[ind+1]
-    
-    # delete duplicates
-    w = np.delete(w, ind+1)
-    t = np.delete(t, ind+1)
-    
-    return [t, w, ind]
+    """Bin consecutive time bins: 0,1 -> 0; 2,3 -> 1; ...,
+    summing every weight that falls in the same new bin.
+    """
+    t = np.asarray(t)
+    w = np.asarray(w)
+
+    coarse_t = np.floor_divide(t, 2)
+
+    # `group[k]` is the output bin to which input photon k belongs.
+    unique_t, group = np.unique(coarse_t, return_inverse=True)
+    coarse_w = np.zeros(unique_t.size, dtype=np.result_type(w.dtype, float))
+    np.add.at(coarse_w, group, w)
+
+    return unique_t, coarse_w
 
 def time_coarsening_all_ch(data):
     # Bin each pair of consecutive time bins into one:
@@ -367,3 +344,43 @@ def time_coarsening_all_ch(data):
     np.add.at(reduced[:, 1:], group, data[:, 1:])
 
     return reduced
+
+def generate_list_of_tau_values(taumax, accuracy, min_step, logtau):
+    """
+    generate list of tau values
+    Parameters
+    ----------
+    taumax : float
+        max tau value in units of original macrotime (before coarsing)
+    accuracy : int
+        number of correlation points per octave
+    min_step : int
+        number of coarsing cycles before starting the calculation of G
+    logtau : bool
+        Logarithmically spaced tau values
+
+    Returns
+    -------
+    tau : list
+        list of tau values in units of original macrotime
+
+    """
+    t = 0
+    tau = []
+    step = int(2 ** min_step)
+    if logtau:
+        while t <= taumax:
+            for i in range(accuracy):
+                t += step
+                # make sure t is multiple of step (needed for coarsing)
+                t = int(np.floor(t / step) * step)
+                tau.append(t)
+            step *= 2
+        tau = [i for i in tau if i <= taumax]
+        tau = [0] + tau
+        return tau
+
+    taumax = int(taumax)
+    tau = np.linspace(0, taumax, taumax + 1, dtype=int)
+
+    return tau

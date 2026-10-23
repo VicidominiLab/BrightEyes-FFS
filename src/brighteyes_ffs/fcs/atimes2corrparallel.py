@@ -8,7 +8,7 @@ import numpy as np
 from .extract_spad_photon_streams import extract_spad_photon_streams
 
 
-def atimes_file_2_corr(fname, list_of_g=['central', 'sum3', 'sum5'], accuracy=16, split=10, time_trace=False, root=0, list_of_g_out=None, averaging=None, parallel_prefer=None, min_step=10, print_info=True):
+def atimes_file_2_corr(fname, list_of_g=['central', 'sum3', 'sum5'], accuracy=16, split=10, time_trace=False, root=0, list_of_g_out=None, averaging=None, parallel_prefer=None, min_step=0, print_info=True):
     """
     Calculate correlations between several photon streams with arrival times
     stored in an h5 or ptu TCSPC file
@@ -55,9 +55,7 @@ def atimes_file_2_corr(fname, list_of_g=['central', 'sum3', 'sum5'], accuracy=16
         list_of_g_out = list_of_g
     
     raw_data = load_atimes_data(fname, channels='auto', perform_calib=False)
-    raw_data.macrotime = 1e-12 # raw macrotimes must be in ps
-    raw_data.microtime = 1e-12 # raw microtimes must be in ps
-    
+
     maxseg = 1000
     
     all_ch = atimes_data_2_channels(raw_data) # list of all channels, sorted
@@ -70,8 +68,26 @@ def atimes_file_2_corr(fname, list_of_g=['central', 'sum3', 'sum5'], accuracy=16
         timeAbs = time * raw_data.macrotime
         [Itrace, timeBins] = np.histogram(timeAbs, time_bins)
         data[:, idet] = Itrace[0:] #/ (timeBins[2] - timeBins[1]) / 1e3
-    
-    G = atimes_2_corrs_parallel(raw_data, list_of_g, accuracy=accuracy, taumax="auto", perform_coarsening=True, logtau=True, root=root, split=split, averaging=averaging, list_of_g_out=list_of_g_out, parallel_prefer=parallel_prefer, min_step=min_step, print_info=print_info)
+
+    if raw_data.tcspc:
+        filters = 'all'
+    else:
+        filters = [1]
+
+    G = atimes_2_corrs_parallel(raw_data,
+                                list_of_g,
+                                accuracy=accuracy,
+                                taumax="auto",
+                                perform_coarsening=True,
+                                logtau=True,
+                                root=root,
+                                split=split,
+                                averaging=averaging,
+                                list_of_g_out=list_of_g_out,
+                                parallel_prefer=parallel_prefer,
+                                min_step=min_step,
+                                print_info=print_info,
+                                filters=filters)
     G.dwell_time = 1e-12 # timeBins[2] - timeBins[1]
     
     if time_trace:
@@ -81,7 +97,7 @@ def atimes_file_2_corr(fname, list_of_g=['central', 'sum3', 'sum5'], accuracy=16
     
 
 
-def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0, averaging=None, perform_coarsening=True, logtau=True, split=10, list_of_g_out=None, parallel_prefer=None, min_step=10, print_info=True):
+def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0, averaging=None, perform_coarsening=True, logtau=True, split=10, list_of_g_out=None, parallel_prefer=None, min_step=0, filters='all', print_info=True):
     """
     Calculate correlations between several photon streams with arrival times
     stored in macrotimes, using parallel computing to speed up the process
@@ -116,6 +132,10 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
         Chunks size (s) with which to split the data. The default is 10.
     list_of_g_out : list of strings, optional
         used for GUI only. The default is None.
+    filters : list
+        List of numbers with filtered correlations to calculate
+        E.g. [0, 2] means calculate the unfiltered correlations,
+        and the filtered ones using the second filter
 
     Returns
     -------
@@ -190,9 +210,7 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
         n_ch = int(all_ch[-1][3:])
     
     G = Correlations()
-    if taumax == "auto":
-        taumax = split / 10 * 1e12 # s
-    
+
     calcAv = False
     if 'av' in list_of_g:
         # calculate the correlations of all channels and calculate average
@@ -226,24 +244,28 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
         
         # CALCULATE CORRELATIONS
         # go over all filters
-        num_filters = np.shape(dataExtr)[1] - 1 # including unfiltered
+        if filters == 'all':
+            num_filters = np.shape(dataExtr)[1] - 1 # including unfiltered
+            filters = [i for i in range(num_filters)]
+        else:
+            num_filters = len(filters)
         for j in range(num_filters):
-            if j > 0:
+            if filters[j] > 0:
                 if print_info:
-                    print("   Filter " + str(j))
+                    print("   Filter " + str(filters[j]))
             if crossCorr == False:
-                if j == 0:
-                    Processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1, prefer=parallel_prefer)(delayed(parallel_g)(t0, [1], data_macrotime, j, split, accuracy, taumax, perform_coarsening, logtau, min_step, chunk) for chunk in list(range(n_chunks)))
+                if filters[j] == 0:
+                    Processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1, prefer=parallel_prefer)(delayed(parallel_g)(t0, [1], data_macrotime, filters[j], split, accuracy, taumax, perform_coarsening, logtau, min_step, chunk) for chunk in list(range(n_chunks)))
                 else:
-                    w0 = dataExtr[:, j+1]
-                    Processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1, prefer=parallel_prefer)(delayed(parallel_g)(t0, w0, data_macrotime, j, split, accuracy, taumax, perform_coarsening, logtau, min_step, chunk) for chunk in list(range(n_chunks)))
+                    w0 = dataExtr[:, filters[j]+1]
+                    Processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1, prefer=parallel_prefer)(delayed(parallel_g)(t0, w0, data_macrotime, filters[j], split, accuracy, taumax, perform_coarsening, logtau, min_step, chunk) for chunk in list(range(n_chunks)))
             else:
-                if j == 0:
-                    Processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1, prefer=parallel_prefer)(delayed(parallel_gx)(t0, [1], t1, [1], data_macrotime, j, split, accuracy, taumax, perform_coarsening, logtau, min_step, chunk) for chunk in list(range(n_chunks)))
+                if filters[j] == 0:
+                    Processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1, prefer=parallel_prefer)(delayed(parallel_gx)(t0, [1], t1, [1], data_macrotime, filters[j], split, accuracy, taumax, perform_coarsening, logtau, min_step, chunk) for chunk in list(range(n_chunks)))
                 else:
-                    w0 = dataExtr[:, j+1]
-                    w1 = dataExtr1[:, j+1]
-                    Processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1, prefer=parallel_prefer)(delayed(parallel_gx)(t0, w0, t1, w1, data_macrotime, j, split, accuracy, taumax, perform_coarsening, logtau, min_step, chunk) for chunk in list(range(n_chunks)))
+                    w0 = dataExtr[:, filters[j]+1]
+                    w1 = dataExtr1[:, filters[j]+1]
+                    Processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1, prefer=parallel_prefer)(delayed(parallel_gx)(t0, w0, t1, w1, data_macrotime, filters[j], split, accuracy, taumax, perform_coarsening, logtau, min_step, chunk) for chunk in list(range(n_chunks)))
             
             if calc_all_xcorr or averaging is not None:
                 c0_all.append(c0)

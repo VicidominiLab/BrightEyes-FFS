@@ -48,10 +48,13 @@ def extract_spad_photon_streams(data, mode):
             datasum = np.concatenate((datasum, getattr(data, listOfFields[j])))
     
     # sort all photon streams
-    datasum = datasum[datasum[:,0].argsort()]
+    datasum = datasum[np.argsort(datasum[:, 0], kind="stable")]
     
-    # remove photon pairs with the same macrotime
-    [dummy, ind] = np.unique(datasum[:,0], return_index=True)
-    datasum = datasum[ind,:]
-    
-    return datasum
+    # sum weights photon pairs with the same macrotime, keep one microtime
+    [unique_t, first_index, group] = np.unique(datasum[:,0], return_index=True, return_inverse=True)
+
+    combined = datasum[first_index].copy()
+    combined[:, 2:] = 0
+    np.add.at(combined[:, 2:], group, datasum[:, 2:])
+
+    return combined

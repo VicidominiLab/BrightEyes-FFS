@@ -403,11 +403,11 @@ def plot_corrs_fit(G_all, tau, list_of_g_out, fitresults, fig=None, ax=None, fig
         
         for i in range(3):
             ax[i].set_xscale('log')
-            #ax[i].set_title(corr)
-            ax[i].set_ylabel('G')
-            ax[i].set_xscale('log')
             ax[i].set_xlabel('Lag time (s)')
-            ax[i].set_ylabel('Residuals')
+            #ax[i].set_title(corr)
+            ax[i].set_xscale('log')
+            ax[i].set_ylabel('G')
+
     
     plt.tight_layout()
     

@@ -417,14 +417,7 @@ def get_fcs_info_singleparam(contents, parameter):
     return contents[start:stop]
 
 def get_duration_from_h5_timetagging_data(fname):
-    max_values = {}
-    with h5py.File(fname, 'r') as f:
-        for name in f.keys():
-            if name.startswith('det'):
-                data = f[name][()]  # read the dataset as a NumPy array
-                if data.size > 0:
-                    max_values[name] = data.max()
-                else:
-                    max_values[name] = None
-    abs_max = 1e-12 * max(abs(v) for v in max_values.values() if v is not None) # s
-    return abs_max
+    photon_data = load_atimes_data(fname)
+    duration = atimes_data_2_duration(photon_data)
+    if True:
+        return duration
