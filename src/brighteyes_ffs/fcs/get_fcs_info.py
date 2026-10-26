@@ -213,7 +213,24 @@ def get_file_info_txt(fname, parameter=['all']):
             output.dwellTime = output.timeResolution * output.numberOfTbinsPerPixel * 1e-6 # s
             output.duration = output.dwellTime * output.numberOfPixels * output.numberOfLines * output.numberOfFrames # s
             output.pxsize = output.rangeX / output.numberOfPixels
-            
+
+            # check coordinates, returns e.g. [52, 1480]
+            idx = fname.rfind("y_") + 2
+            idx2 = fname.rfind("_x_")
+            if fname[idx2 + 3:].rfind("_"):
+                idx3 = fname.rfind("_")
+            else:
+                idx3 = fname.rfind(".")
+            try:
+                y = int(fname[idx:idx2])
+            except:
+                y = 0
+            try:
+                x = int(fname[idx2 + 3:idx3])
+            except:
+                x = 0
+            output.coords = [y, x]
+
             return output
         else:
             output = get_fcs_info_singleparam(contents, parameter)
@@ -291,6 +308,10 @@ def get_file_info_h5(fname):
         output.pxsize = file.pxsize()
     except:
         output.pxsize = 0
+    try:
+        output.coords = file.coords()
+    except:
+        output.coords = None
     
     return output
 
@@ -326,6 +347,7 @@ def get_file_info_ptu(fname):
     output.timeResolution = 1e-6 # us
     output.dwellTime = 1e-12 # s
     output.pxsize = 0
+    output.coords = None
     
     return output
 
@@ -369,6 +391,7 @@ def get_file_info_czi(fname):
         output.dwellTime *= 1e-6 # s
    
     output.duration = output.dwellTime * dims_shape[4]*dims_shape[7] # s
+    output.coords = None
     
     return output
 
@@ -404,6 +427,7 @@ def get_file_info_tiff(fname):
                 output.dwellTime = 1e-6 # s
             
         output.duration = max(tif.pages[0].shape) * output.dwellTime
+        output.coords = None
     
     return output
 

@@ -17,16 +17,19 @@ def fcsbin2h5_atimes(binfile, h5file=None):
     photon_data = fcsbin2atimes(binfile)
     if h5file is None:
         h5file = binfile[:-4] + '.h5'
+    photon_data_2_h5(photon_data, h5file)
 
+
+def photon_data_2_h5(photon_data, h5file):
     with h5py.File(h5file, "w") as f:
         for ch in photon_data.all_channels:
             f.create_dataset(ch, data=getattr(photon_data, ch), compression="gzip")
-
         # save version
         inf = f.create_group('info')
         inf.attrs['tcspc'] = False
         inf.attrs['macrotime'] = photon_data.macrotime
         inf.attrs['microtime'] = photon_data.microtime
+        inf.attrs['coords'] = photon_data.coords
 
 
 def fcsbin2atimes(binfile):
@@ -34,6 +37,7 @@ def fcsbin2atimes(binfile):
     mdata = get_file_info(get_metafile_from_file(binfile))
     macro_time = mdata.timeResolution * 1e-6 # s
     photon_data = numpy_timetrace_2_atimes(data, macro_time)
+    photon_data.coords = mdata.coords
     return photon_data
 
 

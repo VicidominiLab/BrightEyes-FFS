@@ -41,6 +41,14 @@ class h5data():
                 return(f['configurationGUI_beforeStart'].attrs['time_resolution'])
             except:
                 return (f['info'].attrs['macrotime'] * 1e6)
+
+    def coords(self):
+        # xy coordinates in pixels
+        with h5py.File(self.fname, "r") as f:
+            try:
+                return(f['info'].attrs['coords'])
+            except:
+                return None
     
     def pxdwelltime(self):
         # pixel dwell time in us

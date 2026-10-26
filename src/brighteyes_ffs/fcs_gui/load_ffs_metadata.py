@@ -61,22 +61,25 @@ def load_ffs_metadata(fname):
                 setattr(metadata, metadata_key, 0)
         # get coordinates from file name
         # Cells_DEKegfp_4_LP70_75x75um_1500x1500px_y_52_x_1480.bin
-        # returns [52, 1480]
-        idx = fname.rfind("y_") + 2
-        idx2 = fname.rfind("_x_")
-        if fname[idx2+3:].rfind("_"):
-            idx3 = fname.rfind("_")
+        if md.coords is None:
+            # returns [52, 1480]
+            idx = fname.rfind("y_") + 2
+            idx2 = fname.rfind("_x_")
+            if fname[idx2+3:].rfind("_"):
+                idx3 = fname.rfind("_")
+            else:
+                idx3 = fname.rfind(".")
+            try:
+                y = int(fname[idx:idx2])
+            except:
+                y = 0
+            try:
+                x = int(fname[idx2+3:idx3])
+            except:
+                x = 0
+            metadata.coords = [y, x]
         else:
-            idx3 = fname.rfind(".")
-        try:
-            y = int(fname[idx:idx2])
-        except:
-            y = 0
-        try:
-            x = int(fname[idx2+3:idx3])
-        except:
-            x = 0
-        metadata.coords = [y, x]
+            metadata.coords = md.coords
     else:
         metadata = None
     return metadata

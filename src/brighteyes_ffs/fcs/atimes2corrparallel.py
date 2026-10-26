@@ -154,42 +154,49 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
     calc_all_xcorr = False
     start_ch = 0
     if "crossAll" in list_of_g or "cross_all" in list_of_g or "crossall" in list_of_g:
-        start_ch = int(all_ch[0][3:])
-        stop_ch = int(all_ch[-1][3:])+1
-        #list_of_g = convert_crossall_to_list_of_g(stop_ch, start_ch)
-
         progress = 0
-        n_filter = data.num_filters + 1
+        n_filter = data.num_filters + 1 # include unfiltered
         if not data.tcspc:
             n_filter = 1
 
         for filt in range(n_filter):
             if print_info:
                 print("Filter " + str(filt))
-            data_xcorr = data.to_time_channel_array(filt, select_channels=list_of_g[1])
+            if len(list_of_g) > 1:
+                select_channels_list = list_of_g[1]
+                channel_offset = None
+            else:
+                select_channels_list = 'all'
+                list_all_channels = data.all_channels
+                list_all_channels = np.asarray([int(k[3:]) for k in list_all_channels])
+                channel_offset = np.min(list_all_channels)
+
+            data_xcorr = data.to_time_channel_array(filt, select_channels=select_channels_list)
             data_xcorr[:, 0] = data_xcorr[:, 0] - data_xcorr[0, 0]
             duration = data_xcorr[-1, 0] * data.macrotime # s
             n_chunks = int(np.floor(duration / split))
             n_ch = np.shape(data_xcorr)[1] - 1
-            G = Correlations()
 
             for c in range(n_chunks):
-                progress += 1
                 if root != 0:
                     root.progress = progress / n_chunks / n_filter
                 if print_info:
                     print("     Calculating correlation chunk " + str(c) + " of " + str(n_chunks))
+                progress += 1
 
                 tstart = c * split / data.macrotime
                 tstop = (c + 1) * split / data.macrotime
                 start = np.searchsorted(data_xcorr[:,0], tstart, side="left")
                 stop = np.searchsorted(data_xcorr[:,0], tstop, side="right")
 
+                if taumax == 'auto':
+                    taumax = duration / n_chunks / 10
+
                 tau, g_all = atimes_2_all_crosscorr(data_xcorr[start:stop,:], data.macrotime, accuracy=accuracy, taumax=taumax, perform_coarsening=perform_coarsening, logtau=logtau, min_step=min_step)
 
                 if progress == 1:
                     n_times = len(tau)
-                    g_cross_all = np.zeros((1, n_chunks, np.shape(g_all)[1], np.shape(g_all)[1], n_times, n_filter+1))
+                    g_cross_all = np.zeros((1, n_chunks, np.shape(g_all)[1], np.shape(g_all)[1], n_times, n_filter))
                     corrs = Correlations_chunks(np.zeros((n_chunks, np.shape(g_all)[1], np.shape(g_all)[1], n_times, 1+n_filter)))
 
                 g_cross_all[0, c, :, :, :, filt] = g_all
@@ -197,13 +204,22 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
                 corrs.chunks[c,:,:,:,filt+1] = g_all
                 corrs.chunks[c,:,:,:,0] = tau
 
+        if averaging is None:
+            Gall_obj = Correlations()
             for i in range(np.shape(g_all)[1]):
                 for j in range(np.shape(g_all)[1]):
                     name = data.all_channels[i] + 'x' + data.all_channels[j][3:]
-                    G.add_corr_chunks(name, corrs.chunks[:,i, j, :, :])
-                    G.list_of_g_out.append(name)
+                    Gall_obj.add_corr_chunks(name, corrs.chunks[:,i, j, :, :])
+                    Gall_obj.list_of_g_out.append(name)
 
-        return G
+            return Gall_obj
+        else:
+            G = Correlations()
+            g_cross_all = g_cross_all[0] # [chunk, channel, channel, tau, filter]
+            g_cross_all = np.moveaxis(g_cross_all, -1, 0) # [filter, chunk, channel, channel, tau]
+            g_cross_all = np.moveaxis(g_cross_all, -1, 2)  # [filter, chunk, tau, channel, channel]
+            add_cross_all_to_G(G, g_cross_all, tau, averaging, list_of_g_out, channels_order=[i+channel_offset for i in range(data.num_channels)]) # [Nf, Nc, G, c0, c1]
+            return G
         n_ch = stop_ch
         calc_all_xcorr = True
     elif averaging is not None:
@@ -241,7 +257,10 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
         
         # extract atimes t0, t1 and some other data
         t0, t1, corrname, crossCorr, dataExtr, dataExtr1, c0, c1, duration, n_chunks, data_macrotime = extract_atimes_for_corr(data, corr, split, print_info=print_info)
-        
+
+        if taumax == 'auto':
+            taumax = duration / n_chunks / 10
+
         # CALCULATE CORRELATIONS
         # go over all filters
         if filters == 'all':
@@ -290,7 +309,7 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
                         corrs_chunks[idx_corr].chunks[chunk,:,0] = g_temp[:,0] # tau
                         corrs_chunks[idx_corr].chunks[chunk,:,j+1] = g_temp[:,1] # G_unfiltered, G_filtered
                     
-                G.add_corr_chunks(attrname, corrs_chunks[idx_corr].chunks)
+                    G.add_corr_chunks(attrname, corrs_chunks[idx_corr].chunks)
     
     if calc_all_xcorr or averaging is not None:
         add_cross_all_to_G(G, g_cross_all, g_times, averaging, list_of_g_out, c0_all, c1_all)
@@ -468,7 +487,7 @@ def calc_average_correlation(G):
     return G
 
 
-def add_cross_all_to_G(G, g_cross_all, tau, averaging, list_of_g_out, c0_all=None, c1_all=None):
+def add_cross_all_to_G(G, g_cross_all, tau, averaging, list_of_g_out, c0_all=None, c1_all=None, channels_order=None):
     # g_cross_all = [Nf, Nc, G, c0, c1]:
     # 5D: number of filters, number of chunks, number of time points, number of channels, number of channels
     averaging_list = []
@@ -495,8 +514,8 @@ def add_cross_all_to_G(G, g_cross_all, tau, averaging, list_of_g_out, c0_all=Non
         c0_idx = []
         c1_idx = []
         for j in range(len(list_of_av_single_corr)):
-            c0_idx.append(list_of_av_single_corr[j][0])
-            c1_idx.append(list_of_av_single_corr[j][1])
+            c0_idx.append(channels_order.index(list_of_av_single_corr[j][0]))
+            c1_idx.append(channels_order.index(list_of_av_single_corr[j][1]))
         g_single_mean = g_cross_all[:, :, :, c0_idx, c1_idx].mean(axis=-1)
         
         # move Nf axis to the end → (Nc, Ng, Nf)
