@@ -8,12 +8,15 @@ scipy
 tifffile>=2020.9.29
 seaborn
 imutils
-nbformat
+nbformat==5.8.0
 PyQt5
 qdarkstyle
 ome_types
 czifile
 pydantic<2.0
 brighteyes_ism
-notebook
+jupyterlab
 openpyxl
+ptufile
+rfc3987
+phconvert
