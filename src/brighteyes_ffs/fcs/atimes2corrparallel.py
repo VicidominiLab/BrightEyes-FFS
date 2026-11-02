@@ -1,9 +1,7 @@
-import multiprocessing
 import re
-from joblib import Parallel, delayed
 from .atimes2corr import atimes_2_corr, atimes_2_all_crosscorr
 from .fcs2corr import Correlations, Correlations_chunks
-from .atimes_data import atimes_data_2_duration, load_atimes_data, atimes_data_2_channels, atimes_data_attr_2_ch
+from .atimes_data import atimes_data_2_duration, load_atimes_data, atimes_data_2_channels
 import numpy as np
 from .extract_spad_photon_streams import extract_spad_photon_streams
 
@@ -145,14 +143,13 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
     """
 
     all_ch = atimes_data_2_channels(data) # number of ch
-    duration = atimes_data_2_duration(data, macrotime=data.macrotime, subtract_start_time=False) # s
 
     n_ch = len(all_ch)
     if n_ch < 1:
         return None
     
     calc_all_xcorr = False
-    start_ch = 0
+
     if "crossAll" in list_of_g or "cross_all" in list_of_g or "crossall" in list_of_g:
         progress = 0
         n_filter = data.num_filters + 1 # include unfiltered
@@ -220,8 +217,7 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
             g_cross_all = np.moveaxis(g_cross_all, -1, 2)  # [filter, chunk, tau, channel, channel]
             add_cross_all_to_G(G, g_cross_all, tau, averaging, list_of_g_out, channels_order=[i+channel_offset for i in range(data.num_channels)]) # [Nf, Nc, G, c0, c1]
             return G
-        n_ch = stop_ch
-        calc_all_xcorr = True
+
     elif averaging is not None:
         n_ch = int(all_ch[-1][3:])
     
@@ -274,17 +270,25 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
                     print("   Filter " + str(filters[j]))
             if crossCorr == False:
                 if filters[j] == 0:
-                    Processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1, prefer=parallel_prefer)(delayed(parallel_g)(t0, [1], data_macrotime, filters[j], split, accuracy, taumax, perform_coarsening, logtau, min_step, chunk) for chunk in list(range(n_chunks)))
+                    Processed_list = calc_g_processed_list(t0, [1], None, None, data_macrotime, filters[j], split,
+                                                           accuracy, taumax, perform_coarsening, logtau, min_step,
+                                                           n_chunks, parallel_prefer)
                 else:
                     w0 = dataExtr[:, filters[j]+1]
-                    Processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1, prefer=parallel_prefer)(delayed(parallel_g)(t0, w0, data_macrotime, filters[j], split, accuracy, taumax, perform_coarsening, logtau, min_step, chunk) for chunk in list(range(n_chunks)))
+                    Processed_list = calc_g_processed_list(t0, w0, None, None, data_macrotime, filters[j], split,
+                                                           accuracy, taumax, perform_coarsening, logtau, min_step,
+                                                           n_chunks, parallel_prefer)
             else:
                 if filters[j] == 0:
-                    Processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1, prefer=parallel_prefer)(delayed(parallel_gx)(t0, [1], t1, [1], data_macrotime, filters[j], split, accuracy, taumax, perform_coarsening, logtau, min_step, chunk) for chunk in list(range(n_chunks)))
+                    Processed_list = calc_g_processed_list(t0, [1], t1, [1], data_macrotime, filters[j], split,
+                                                           accuracy, taumax, perform_coarsening, logtau, min_step,
+                                                           n_chunks, parallel_prefer)
                 else:
                     w0 = dataExtr[:, filters[j]+1]
                     w1 = dataExtr1[:, filters[j]+1]
-                    Processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1, prefer=parallel_prefer)(delayed(parallel_gx)(t0, w0, t1, w1, data_macrotime, filters[j], split, accuracy, taumax, perform_coarsening, logtau, min_step, chunk) for chunk in list(range(n_chunks)))
+                    Processed_list = calc_g_processed_list(t0, w0, t1, w1, data_macrotime, filters[j], split,
+                                                           accuracy, taumax, perform_coarsening, logtau, min_step,
+                                                           n_chunks, parallel_prefer)
             
             if calc_all_xcorr or averaging is not None:
                 c0_all.append(c0)
@@ -328,6 +332,45 @@ def atimes_2_corrs_parallel(data, list_of_g, accuracy=50, taumax="auto", root=0,
             setattr(G, 'F' + str(f) + '_average', Gav)
     
     return G
+
+
+def calc_g_processed_list(t0, w0, t1, w1,
+                          data_macrotime,
+                          filters,
+                          split,
+                          accuracy,
+                          taumax,
+                          perform_coarsening,
+                          logtau,
+                          min_step,
+                          n_chunks,
+                          parallel_prefer):
+    if parallel_prefer != "sequential":
+        import multiprocessing
+        from joblib import Parallel, delayed
+        if t1 is not None:
+            processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1,
+                                      prefer=parallel_prefer)(delayed(parallel_gx)(t0, w0, t1, w1, data_macrotime,
+                                                                                  filters, split, accuracy,
+                                                                                  taumax, perform_coarsening,
+                                                                                  logtau, min_step, chunk)
+                                                              for chunk in list(range(n_chunks)))
+        else:
+            processed_list = Parallel(n_jobs=multiprocessing.cpu_count() - 1,
+                                       prefer=parallel_prefer)(delayed(parallel_g)(t0, w0, data_macrotime,
+                                                                                   filters, split, accuracy,
+                                                                                   taumax, perform_coarsening,
+                                                                                   logtau, min_step, chunk)
+                                                               for chunk in list(range(n_chunks)))
+    else:
+        if t1 is not None:
+            processed_list = [parallel_gx(t0, w0, t1, w1, data_macrotime, filters, split, accuracy, taumax, perform_coarsening, logtau, min_step, chunk)
+                              for chunk in list(range(n_chunks))]
+        else:
+            processed_list = [parallel_g(t0, w0, data_macrotime, filters, split, accuracy, taumax, perform_coarsening, logtau, min_step, chunk)
+                              for chunk in list(range(n_chunks))]
+
+    return processed_list
 
 
 def parallel_g(t0, w0, macrotime, filter_number, split, accuracy, taumax, perform_coarsening, logtau, min_step, chunk):
