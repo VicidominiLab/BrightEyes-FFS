@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.special import factorial
-from joblib import Parallel, delayed
+
 
 def simulate_pch_1c_mc_ntimes(psf, concentration, brightness, n_samples, bg=0, n_hist_max=10, max_bin=101, err=1e-5):
     hist_all = np.zeros((max_bin, n_hist_max))
@@ -111,6 +111,7 @@ def simulate_photon_counts_1c_mc(psf, concentration, brightness, n_samples, bg=0
         1D array with the total detected photon counts for each simulation.
 
     """
+    from joblib import Parallel, delayed
     nx = np.shape(psf)[0]
 
     def one_simulation(_):
