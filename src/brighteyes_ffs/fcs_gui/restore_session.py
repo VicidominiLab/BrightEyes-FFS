@@ -292,7 +292,12 @@ def restorelib_ffs(libfile, root=0):
                     if dummy is not None:
                         dummy = np.array(dummy)
                     setattr(fileObj, arg, dummy)
-                
+
+                try:
+                    setattr(fileObj, 'mark_as_favourite', check_none(f[currFile + '/'].attrs['mark_as_favourite'], dtype=int))
+                except:
+                    pass
+
                 if -1 in fileObj.timetrace:
                     fileObj.timetrace = None
                 
@@ -447,7 +452,54 @@ def restorelib_ffs(libfile, root=0):
                             fD = f[fitSingleCurveFolder].attrs['D']
                             fw0 = check_none(f[fitSingleCurveFolder].attrs['w0'])
                             fdata = f[fitSingleCurveFolder].attrs['data']
-                            
+
+                            # old versions store the fits differently
+                            if (lib.version == '1.0' or lib.version == '1.1') and ffitfunctionLabel == 'Anomalous diffusion 1 component':
+                                ffitarray_new = np.zeros((12))
+                                fmaxbound_new = np.zeros((11)) + 1e6
+                                fminbound_new = np.zeros((11)) + 0
+                                fparamFactors10_new = np.zeros((11)) + 1
+                                fstartvalues_new = np.asarray([1, 1, 1e-6, 1, 1, 1, 0, 1e-6, 3, 0, 1])
+                                idx_new = [0, 1, 8, 9, 3]
+                                idx_old = [0, 1, 2, 3, 4]
+                                for i_idx in range(len(idx_new)):
+                                    ffitarray_new[idx_new[i_idx]] = ffitarray[idx_old[i_idx]]
+                                    fmaxbound_new[idx_new[i_idx]] = fmaxbound[idx_old[i_idx]]
+                                    fminbound_new[idx_new[i_idx]] = fminbound[idx_old[i_idx]]
+                                    fparamFactors10_new[idx_new[i_idx]] = fparamFactors10[idx_old[i_idx]]
+                                    fstartvalues_new[idx_new[i_idx]] = fstartvalues[idx_old[i_idx]] / fparamFactors10[idx_old[i_idx]]
+                                ffitarray_new[-1] = ffitarray[-1]
+                                ffitarray = ffitarray_new
+                                fparamidx = idx_new
+                                fmaxbound = fmaxbound_new
+                                fminbound = fminbound_new
+                                fparamFactors10 = fparamFactors10_new
+                                fstartvalues = fstartvalues_new
+                            elif (lib.version == '1.0' or lib.version == '1.1') and ffitfunctionLabel == 'Free diffusion 1 component':
+                                fparamFactors10 = np.zeros((11)) + 1
+                                fparamFactors10[1] = 1e-3
+                            elif (lib.version == '1.0' or lib.version == '1.1') and ffitfunctionLabel == 'Free diffusion circular scanning':
+                                ffitarray_new = np.zeros((10))
+                                fmaxbound_new = np.zeros((9)) + 1e6
+                                fminbound_new = np.zeros((9)) + 0
+                                fparamFactors10_new = np.zeros((9)) + 1
+                                fstartvalues_new = np.zeros((9))
+                                idx_new = [0, 1, 2, 3, 5, 4, 6]
+                                idx_old = [0, 1, 2, 3, 4, 5, 6]
+                                for i_idx in range(len(idx_new)):
+                                    ffitarray_new[idx_new[i_idx]] = ffitarray[idx_old[i_idx]]
+                                    fmaxbound_new[idx_new[i_idx]] = fmaxbound[idx_old[i_idx]]
+                                    fminbound_new[idx_new[i_idx]] = fminbound[idx_old[i_idx]]
+                                    fparamFactors10_new[idx_new[i_idx]] = fparamFactors10[idx_old[i_idx]]
+                                    fstartvalues_new[idx_new[i_idx]] = fstartvalues[idx_old[i_idx]] / fparamFactors10[idx_old[i_idx]]
+                                ffitarray_new[-1] = ffitarray[-1]
+                                ffitarray = ffitarray_new
+                                fparamidx = idx_new
+                                fmaxbound = fmaxbound_new
+                                fminbound = fminbound_new
+                                fparamFactors10 = fparamFactors10_new
+                                fstartvalues = fstartvalues_new
+
                             indfitObj = FitSingleObj(fdata, FitModel(), ffitarray, fstartvalues, ffitrange)
                             indfitObj.data = fdata
                             indfitObj.fitfunction_label = ffitfunctionLabel
@@ -663,6 +715,7 @@ def savelib_ffs(FFSlib, root=0, fname=''):
                     file5 = im5.create_group("file" + str(j))
                     file5.attrs["fname"] = check_none(file.fname, dtype=str)
                     file5.attrs["label"] = check_none(file.label, dtype=str)
+                    file5.attrs["mark_as_favourite"] = check_none(file.mark_as_favourite, dtype=int)
                     
                     # save time trace
                     tt = file.timetrace

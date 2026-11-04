@@ -36,7 +36,7 @@ class FFSlib:
     def __init__(self,
                  lib = None,
                  active_image = None,
-                 version = '1.1',
+                 version = '1.2',
                  notes = '',
                  date_created = None,
                  date_modified = None):
@@ -190,6 +190,7 @@ class FFSfile:
         self.timetrace = timetrace
         self.airy = airy
         self.active_analysis = active_analysis # choose which analysis is active by default
+        self.mark_as_favourite = None
     
     @property
     def num_analyses(self):
