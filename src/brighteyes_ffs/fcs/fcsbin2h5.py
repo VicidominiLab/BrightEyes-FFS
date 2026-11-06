@@ -32,16 +32,49 @@ def photon_data_2_h5(photon_data, h5file):
         inf.attrs['coords'] = photon_data.coords
 
 
-def fcsbin2atimes(binfile):
-    data = file_to_fcs_count(binfile)
+def fcsbin2atimes(binfile, chunksize=-1):
+    """
+    Convert a .bin file with FCS data into an ATimes data object
+    Parameters
+    ----------
+    binfile : path
+        path to .bin file name
+    chunksize : int, optional
+        Choose -1 for a file that is not too large to read in memory
+        Choose a number of points (e.g. 1000000) to read the data in chunks of this size
+        The output is identical in both cases
+
+    Returns
+    -------
+        ATimes data object
+            Object with fields det0, det1, det2, det3, etc. with macrotimes, microtimes and weights
+    """
     mdata = get_file_info(get_metafile_from_file(binfile))
-    macro_time = mdata.timeResolution * 1e-6 # s
-    photon_data = numpy_timetrace_2_atimes(data, macro_time)
+    macro_time = mdata.timeResolution * 1e-6  # s
+
+    if chunksize > 0:
+        n_offset = 0
+        photon_data_list = []
+        while True:
+            chunk = file_to_fcs_count(binfile, n_points=chunksize, n_offset=n_offset)
+            if len(chunk) == 0:
+                break
+            photon_data_list.append(numpy_timetrace_2_atimes(chunk, macro_time, n_offset))
+            n_offset += len(chunk)
+        num_chunks = len(photon_data_list)
+        for channel in photon_data_list[0].all_channels:
+            photon_data = np.concatenate([getattr(photon_data_list[i], channel) for i in range(num_chunks)], axis=0, )
+            setattr(photon_data_list[0], channel, photon_data)
+        photon_data = photon_data_list[0]
+    else:
+        data = file_to_fcs_count(binfile)
+        photon_data = numpy_timetrace_2_atimes(data, macro_time)
+
     photon_data.coords = mdata.coords
     return photon_data
 
 
-def numpy_timetrace_2_atimes(data, time_resolution):
+def numpy_timetrace_2_atimes(data, time_resolution, arrival_time_offset=0):
     """
     Convert a numpy array into an ATimes data object
     Parameters
@@ -60,17 +93,17 @@ def numpy_timetrace_2_atimes(data, time_resolution):
     photon_data.microtime = time_resolution  # s
 
     for i in range(np.shape(data)[1]):
-        setattr(photon_data, 'det' + str(i), photon_arrivals(data, i))
+        setattr(photon_data, 'det' + str(i), photon_arrivals(data, i, arrival_time_offset))
 
     return photon_data
 
 
-def photon_arrivals(data, channel):
+def photon_arrivals(data, channel, arrival_time_offset=0):
     weights = data[:, channel]
     times = np.flatnonzero(weights)
 
     return np.column_stack((
-        times,
+        times + arrival_time_offset,
         np.ones(times.size, dtype=int),
         weights[times],
     ))
