@@ -105,11 +105,11 @@ def fcs_2c_analytical(tau, N, tauD1, tauD2, F, alpha=1, T=0, tautrip=1e-6, SF=5,
     # diffusion
     Gy *= F / (1 + tau/tauD1) / np.sqrt(1 + tau/SF**2/tauD1) + alpha**2 * (1-F) / (1 + tau/tauD2) / np.sqrt(1 + tau/SF**2/tauD2)
 
-    # offset
-    Gy += offset
-
     # afterpulsing (see e.g. Buchholz, Biophys J., 2018)
     Gy += A * tau**B
+
+    # offset
+    Gy += offset
 
     return Gy
 

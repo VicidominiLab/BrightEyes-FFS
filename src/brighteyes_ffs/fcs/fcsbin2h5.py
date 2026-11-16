@@ -13,8 +13,8 @@ def fcsbin2h5(binfile, h5file):
     h5f.close()
 
 
-def fcsbin2h5_atimes(binfile, h5file=None):
-    photon_data = fcsbin2atimes(binfile)
+def fcsbin2h5_atimes(binfile, h5file=None, chunksize=-1):
+    photon_data = fcsbin2atimes(binfile, chunksize)
     if h5file is None:
         h5file = binfile[:-4] + '.h5'
     photon_data_2_h5(photon_data, h5file)

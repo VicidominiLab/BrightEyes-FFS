@@ -20,20 +20,61 @@ class ATimesData:
 
     @property
     def data(self):
-        # [macro, micro, channel, filter0, filter1, filter2, etc.]
-        all_ch = [k for k in dir(self) if k.startswith('det')]
-        if self.tcspc:
-            all_data = np.concatenate(
-                [np.column_stack((x := getattr(self, ch)[:, :2], np.full(x.shape[0], int(ch[3:])), np.full(x.shape[0], int(1)), getattr(self, ch)[:, 2:]))
-                 for ch in all_ch], axis=0
-            )
-        else:
-            # [macro, micro=0, channel, intensity]
-            all_data = np.concatenate(
-                [np.column_stack(
-                    (x := getattr(self, ch)[:, :2], np.full(x.shape[0], int(ch[3:])), getattr(self, ch)[:, 2:]))
-                 for ch in all_ch], axis=0
-            )
+        """Return data from all detectors over the full time range."""
+        return self.get_data()
+
+    def get_data(self, start=None, stop=None):
+        """
+        Combine detector data within a macrotime range.
+
+        Parameters
+        ----------
+        start : number or None
+            First macrotime to include. None means no lower limit.
+        stop : number or None
+            First macrotime to exclude. None means no upper limit.
+
+        Returns
+        -------
+        numpy.ndarray
+            Rows sorted by macrotime. The columns are macrotime,
+            microtime, channel, weight, and any additional filter columns.
+
+        Notes
+        -----
+        Each detector array must be sorted by macrotime. Start and stop
+        use the same units as the first column of the detector arrays.
+        """
+        if start is not None and stop is not None and start > stop:
+            raise ValueError("start must be less than or equal to stop")
+
+        all_ch = [name for name in dir(self) if name.startswith("det") and name[3:].isdigit()]
+
+        if not all_ch:
+            raise ValueError("No detector arrays were found.")
+
+        selected = []
+
+        for ch in all_ch:
+            detector = getattr(self, ch)
+            times = detector[:, 0]
+
+            first = 0 if start is None else np.searchsorted(times, start, side="left")
+            last = len(times) if stop is None else np.searchsorted(times, stop, side="left")
+
+            # Only this slice is included in the combined array.
+            x = detector[first:last]
+            channel = np.full(len(x), int(ch[3:]), dtype=int)
+
+            if self.tcspc:
+                weights = np.ones(len(x), dtype=int)
+                rows = np.column_stack((x[:, :2], channel, weights, x[:, 2:]))
+            else:
+                rows = np.column_stack((x[:, :2], channel, x[:, 2:]))
+
+            selected.append(rows)
+
+        all_data = np.concatenate(selected, axis=0)
         return all_data[np.argsort(all_data[:, 0], kind="stable")]
 
 
@@ -143,8 +184,7 @@ class ATimesData:
             tcspc_bins = np.arange(0, max_microtime, bintime)
             [Ihist, lifetime_bins] = np.histogram(microtime, tcspc_bins)
             setattr(self, "hist" + det[3:], np.transpose(np.stack((lifetime_bins[0:-1], Ihist))))
-        
-    
+
     def align_hist(self, n=15):
         """
         Align lifetime histograms of different channels. Calculate moving averaged

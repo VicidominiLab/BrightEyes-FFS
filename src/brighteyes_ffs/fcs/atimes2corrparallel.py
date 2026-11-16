@@ -6,7 +6,18 @@ import numpy as np
 from .extract_spad_photon_streams import extract_spad_photon_streams
 
 
-def atimes_file_2_corr(fname, list_of_g=['central', 'sum3', 'sum5'], accuracy=16, split=10, time_trace=False, root=0, list_of_g_out=None, averaging=None, parallel_prefer=None, min_step=0, print_info=True):
+def atimes_file_2_corr(fname,
+                       list_of_g=['central', 'sum3', 'sum5'],
+                       accuracy=16,
+                       split=10,
+                       time_trace=False,
+                       root=0,
+                       list_of_g_out=None,
+                       averaging=None,
+                       parallel_prefer=None,
+                       min_step=0,
+                       perform_coarsening=True,
+                       print_info=True):
     """
     Calculate correlations between several photon streams with arrival times
     stored in an h5 or ptu TCSPC file
@@ -39,6 +50,9 @@ def atimes_file_2_corr(fname, list_of_g=['central', 'sum3', 'sum5'], accuracy=16
         E.g. if arrival times are in ps, then min_step = 10 means
         min lag time = 2**10 ps = 1024 ps
         Used to speed up calculation
+    perform_coarsening : bool, optional
+        Apply time coarsening every xx tau calculations to speed up the calculation by binning the data
+        xx = accuracy
 
     Returns
     -------
@@ -76,7 +90,7 @@ def atimes_file_2_corr(fname, list_of_g=['central', 'sum3', 'sum5'], accuracy=16
                                 list_of_g,
                                 accuracy=accuracy,
                                 taumax="auto",
-                                perform_coarsening=True,
+                                perform_coarsening=perform_coarsening,
                                 logtau=True,
                                 root=root,
                                 split=split,
