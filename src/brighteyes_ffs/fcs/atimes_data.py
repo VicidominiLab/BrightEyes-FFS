@@ -314,6 +314,8 @@ def load_atimes_data(fname, channels='auto', sysclk_MHz=240, perform_calib=False
         for ch in channels:
             data_single_ch = np.column_stack((macrotime[channel==ch], microtime[channel==ch]))
             setattr(data, 'det' + str(int(ch)), data_single_ch)
+        data.macrotime = 1e-12
+        data.microtime = 1e-12
     
     # -------------------- t3r file --------------------
     elif fname[-4:] == ".t3r":
@@ -338,6 +340,9 @@ def load_atimes_data(fname, channels='auto', sysclk_MHz=240, perform_calib=False
         for ch in channels:
             data_single_ch = np.column_stack((macrotime[channel==ch], microtime[channel==ch]))
             setattr(data, 'det' + str(int(ch)), data_single_ch)
+
+        data.macrotime = 1e-12
+        data.microtime = 1e-12
     
     # -------------------- Raw TTM file --------------------
     elif fname[-2:] == "h5":
@@ -365,6 +370,9 @@ def load_atimes_data(fname, channels='auto', sysclk_MHz=240, perform_calib=False
             microtime = df['dt_' + ch]            
             setattr(data, 'det' + ch, np.transpose([macrotime, microtime]))
         closefile(fname)
+
+        data.macrotime = 1e-12
+        data.microtime = 1e-12
     
     return data
 

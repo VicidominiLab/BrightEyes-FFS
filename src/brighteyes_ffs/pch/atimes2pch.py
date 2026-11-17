@@ -46,9 +46,7 @@ def atimes_file_2_pch(fname, list_of_pch=['central', 'sum3', 'sum5'], split=10, 
         list_of_pch_out = list_of_pch
     
     raw_data = load_atimes_data(fname, channels='auto', perform_calib=False)
-    raw_data.macrotime = 1e-12 # raw macrotimes must be in ps
-    raw_data.microtime = 1e-12 # raw microtimes must be in ps
-    
+
     maxseg = 1000
     all_ch = atimes_data_2_channels(raw_data)
     data = np.zeros((maxseg, len(all_ch)))
@@ -60,7 +58,7 @@ def atimes_file_2_pch(fname, list_of_pch=['central', 'sum3', 'sum5'], split=10, 
         timeAbs = time * raw_data.macrotime
         [Itrace, timeBins] = np.histogram(timeAbs, time_bins)
         data[:, idet] = Itrace[0:] #/ (timeBins[2] - timeBins[1]) / 1e3
-    
+
     G = atimes_2_pch_all(raw_data, list_of_pch, split, bin_time, normalize=normalize, list_of_pch_out=list_of_pch_out, max_k=max_k)
     
     if time_trace:
@@ -81,28 +79,29 @@ def atimes_2_pch_all(data, list_of_pch, split, bin_time, normalize=True, list_of
         data_macrotime = 1e-12
     duration = atimes_data_2_duration(data, macrotime=data_macrotime, subtract_start_time=False) # in s
     n_chunks = int(np.floor(duration / split))
-    
+
+    print('number of chunks')
+    print(n_chunks)
+
     for idx_corr, corr in enumerate(list_of_pch):
     
         # EXTRACT DATA
         if type(corr) == int:
             dataExtr = getattr(data, 'det' + str(corr))
-            t0 = dataExtr[:, 0]
             corrname = 'det' + str(corr)
         elif type(corr) == str and corr[0] == 'x':
             dataExtr = getattr(data, 'det' + str(corr[1:3]))
-            t0 = dataExtr[:, 0]
             corrname = 'det' + str(corr[1:3])
         else:
-            print("Extracting and sorting photons")
             dataExtr = extract_spad_photon_streams(data, corr)
-            t0 = dataExtr[:, 0]
             corrname = corr
-        
-        t0 *= data_macrotime # s
+
+        t0 = dataExtr[:, 0]
+        t0 = t0.astype(float) * data_macrotime # s
+        weights = dataExtr[:, 2]
         
         for chunk in range(n_chunks):
-            hist = arrival_times_to_pch(t0, bin_time, chunk, split, normalize, max_k)
+            hist = arrival_times_to_pch(t0, weights, bin_time, chunk, split, normalize, max_k)
             if list_of_pch_out is None:
                 corrname_out = corrname
             else:
@@ -114,12 +113,14 @@ def atimes_2_pch_all(data, list_of_pch, split, bin_time, normalize=True, list_of
                 G.list_of_g_out.append(corrname_out)
             
             corrs_chunks[idx_corr].chunks[chunk,:,:] = hist
-        
+
+        print(corrname_out)
+
         G.add_corr_chunks(corrname_out, corrs_chunks[idx_corr].chunks)
     
     return G
     
-def arrival_times_to_pch(t0, bin_time, chunk, split, normalize, max_k=30):
+def arrival_times_to_pch(t0, weights, bin_time, chunk, split, normalize, max_k=30):
     """
     Convert photon arrival times to a photon counting histogram (PCH).
 
@@ -127,6 +128,8 @@ def arrival_times_to_pch(t0, bin_time, chunk, split, normalize, max_k=30):
     ----------
     t0 : array-like, shape (N,)
         Photon arrival times (e.g., in seconds). Must be 1-D and nonnegative.
+    weights : array-like, shape (N,)
+        Photon wegihts in case multiple photons have the same macrotime
     bin_time : float
         Width of each time bin (Δt). Must be > 0 (same units as t).
     t_start : float, optional
@@ -155,7 +158,10 @@ def arrival_times_to_pch(t0, bin_time, chunk, split, normalize, max_k=30):
     
     tstart = chunk * split
     tstop = (chunk + 1) * split
-    tchunk = t0[(t0 >= tstart) & (t0 < tstop)]
+    mask = (t0 >= tstart) & (t0 < tstop)
+
+    tchunk = t0[mask]
+    weights = weights[mask]
     
     tchunk -= tchunk[0]
     duration = tchunk[-1] - tchunk[0]
@@ -164,14 +170,17 @@ def arrival_times_to_pch(t0, bin_time, chunk, split, normalize, max_k=30):
     # Map each photon to its bin index
     idx = np.floor(tchunk / bin_time).astype(np.int64)
     # Guard against boundary rounding nudges
-    idx = idx[(idx >= 0) & (idx < n_bins)]
+    valid = (idx >= 0) & (idx <= n_bins)
+    idx = idx[valid]
+    weights = weights[valid]
     # Count photons per bin
-    counts_per_bin = np.bincount(idx, minlength=n_bins).astype(np.int64)
+    counts_per_bin = np.bincount(idx, weights=weights, minlength=n_bins).astype(np.int64)
 
     # Build the PCH: how many bins had k photons?
     # np.bincount over counts_per_bin gives n_k at k = 0,1,2,...
     n_k = np.bincount(counts_per_bin)
-    
+
+    max_k += 1
     hist_out = np.zeros((max_k, 2)) # [bin number, bin height]
     if len(n_k) < max_k:
         hist_out[0:len(n_k),1] = n_k
@@ -183,4 +192,4 @@ def arrival_times_to_pch(t0, bin_time, chunk, split, normalize, max_k=30):
     if normalize and n_bins > 0 and np.sum(hist_out[:,1]) > 0:
         hist_out[:,1] = hist_out[:,1] / np.sum(hist_out[:,1])
 
-    return hist_out
+    return hist_out[0:max_k-1, :]
