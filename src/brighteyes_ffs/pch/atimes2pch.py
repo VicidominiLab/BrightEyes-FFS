@@ -80,9 +80,6 @@ def atimes_2_pch_all(data, list_of_pch, split, bin_time, normalize=True, list_of
     duration = atimes_data_2_duration(data, macrotime=data_macrotime, subtract_start_time=False) # in s
     n_chunks = int(np.floor(duration / split))
 
-    print('number of chunks')
-    print(n_chunks)
-
     for idx_corr, corr in enumerate(list_of_pch):
     
         # EXTRACT DATA
@@ -113,8 +110,6 @@ def atimes_2_pch_all(data, list_of_pch, split, bin_time, normalize=True, list_of
                 G.list_of_g_out.append(corrname_out)
             
             corrs_chunks[idx_corr].chunks[chunk,:,:] = hist
-
-        print(corrname_out)
 
         G.add_corr_chunks(corrname_out, corrs_chunks[idx_corr].chunks)
     
