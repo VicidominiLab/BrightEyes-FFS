@@ -95,7 +95,10 @@ def atimes_2_pch_all(data, list_of_pch, split, bin_time, normalize=True, list_of
 
         t0 = dataExtr[:, 0]
         t0 = t0.astype(float) * data_macrotime # s
-        weights = dataExtr[:, 2]
+        if np.shape(data.det11)[1] < 3:
+            weights = t0 * 0 + 1
+        else:
+            weights = dataExtr[:, 2]
         
         for chunk in range(n_chunks):
             hist = arrival_times_to_pch(t0, weights, bin_time, chunk, split, normalize, max_k)
