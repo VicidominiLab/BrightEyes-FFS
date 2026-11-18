@@ -95,8 +95,8 @@ def atimes_2_pch_all(data, list_of_pch, split, bin_time, normalize=True, list_of
 
         t0 = dataExtr[:, 0]
         t0 = t0.astype(float) * data_macrotime # s
-        if np.shape(data.det11)[1] < 3:
-            weights = t0 * 0 + 1
+        if dataExtr.shape[1] < 3:
+            weights = np.ones(len(t0))
         else:
             weights = dataExtr[:, 2]
         
