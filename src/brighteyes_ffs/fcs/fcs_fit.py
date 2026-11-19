@@ -241,7 +241,14 @@ def fit_corr(Gexp, tau, fit_info, param, weights=1, global_param=None, lower_bou
         upper_bounds = np.squeeze(upper_bounds[fit_info==1])
         fixed_param = np.squeeze(param[fit_info==0])
         param = np.squeeze(param)
-    
+
+    # make sure all arrays are at least 1d
+    fitparam_start = np.atleast_1d(fitparam_start)
+    lower_bounds = np.atleast_1d(lower_bounds)
+    upper_bounds = np.atleast_1d(upper_bounds)
+    fixed_param = np.atleast_1d(fixed_param)
+    param = np.atleast_1d(param)
+
     fitresult = least_squares(fitfun_general, fitparam_start, args=(fixed_param, fit_info, tau, Gexp, fitmodel, global_param, weights, param_factors10), bounds=(lower_bounds, upper_bounds), **fit_options)
     
     if n_corr > 1:

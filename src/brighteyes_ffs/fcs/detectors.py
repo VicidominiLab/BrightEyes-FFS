@@ -30,7 +30,7 @@ def distance_between_elements(detector, elem1, elem2):
     return distance
 
 
-def detector_element_coordinates(detector, element=None):
+def detector_element_coordinates(detector, element=None, return_active_elements=False):
     """
     Return the xy coordinates of all detector elements for a given
     system.
@@ -46,11 +46,17 @@ def detector_element_coordinates(detector, element=None):
     
         E.g. detector_element_coordinates('luminosa', element=20) returns
         [0, 0], i.e. the coordinates of the central element
+    return_active_elements : bool, optional
+        Return a second array containing bool values for which elements actually exist and which not
+        e.g. the luminosa system has 23 elements but starts counting from 9 so in total there are 32 elements
+        but 0-9 are False and 9-32 are True
 
     Returns
     -------
     sx : np.array()
         2D array with xy coordinates
+    active_elements : np.array()
+        1D boolean array, optional
 
     """
     
@@ -107,6 +113,8 @@ def detector_element_coordinates(detector, element=None):
         sx[31] = [6*shiftx,0]
         
         sx /= np.sqrt(3)
+
+        active_elements = np.ones((n_elements))
         
     elif detector in {"luminosa", "pda-23", "pda23"}:
         
@@ -132,6 +140,9 @@ def detector_element_coordinates(detector, element=None):
         sx[9:,0] = sxx
         sx[9:,1] = syy
         sx /= 2
+
+        active_elements = np.ones((n_elements))
+        active_elements[0:9] = 0
         
     elif detector == 'nsparc' or detector == '5x5':
         
@@ -148,6 +159,8 @@ def detector_element_coordinates(detector, element=None):
         sx[:,1] = [i//5 for i in range(n_elements)]
         sx -= 2
         sx[:,1] *= -1
+
+        active_elements = np.ones((n_elements))
     
     elif detector == 'gi' or detector == '7x7' or detector == 'prism':
         
@@ -167,10 +180,14 @@ def detector_element_coordinates(detector, element=None):
         sx -= 3
         sx[:,1] *= -1
 
+        active_elements = np.ones((n_elements))
+
     else:
         return None
     
     if element is None:
+        if return_active_elements:
+            return sx, active_elements
         return sx
     else:
         return sx[element]

@@ -36,7 +36,7 @@ def plot_correlations_microimage(detector, list_of_g, list_of_g_out=None, averag
 
     """
     
-    xx = detector_element_coordinates(detector, element=None)
+    xx, active_elements = detector_element_coordinates(detector, element=None, return_active_elements=True)
     
     if averaging is None and (type(list_of_g[0]) is not str or str.lower(list_of_g[0]) != 'crossall'):
         
@@ -63,7 +63,8 @@ def plot_correlations_microimage(detector, list_of_g, list_of_g_out=None, averag
     
             # draw detector elements
             for c in range(len(xx)):
-                ax.add_patch(CirclePolygon((xx[c, 0], xx[c, 1]), radius=0.45, resolution=51, alpha=1, color='grey'))
+                if active_elements[c]:
+                    ax.add_patch(CirclePolygon((xx[c, 0], xx[c, 1]), radius=0.45, resolution=51, alpha=1, color='grey'))
             ax.set_xlim([np.min(xx)-0.5, np.max(xx)+0.5])
             ax.set_ylim([np.min(xx)-0.5, np.max(xx)+0.5])        
     
@@ -125,9 +126,9 @@ def plot_correlations_microimage(detector, list_of_g, list_of_g_out=None, averag
             row = idx_scalar // 6
             col = idx_scalar % 6
             ax = axs[row, col]
-            for i in xx:
-                if not any(np.array_equal(i, pt) for pt in used_ch):
-                    ax.add_patch(CirclePolygon((i[0], i[1]), radius=0.45, resolution=51, alpha=0.7, color='white'))
+            for i, x_single in enumerate(xx):
+                if not any(np.array_equal(x_single, pt) for pt in used_ch) and active_elements[i]:
+                    ax.add_patch(CirclePolygon((x_single[0], x_single[1]), radius=0.45, resolution=51, alpha=0.7, color='white'))
                 
     else:
         #cross all
@@ -153,7 +154,8 @@ def plot_correlations_microimage(detector, list_of_g, list_of_g_out=None, averag
             
             # draw detector elements
             for c in range(len(xx)):
-                ax.add_patch(CirclePolygon((xx[c, 0], xx[c, 1]), radius=0.45, resolution=51, alpha=1, color='grey'))
+                if active_elements[c]:
+                    ax.add_patch(CirclePolygon((xx[c, 0], xx[c, 1]), radius=0.45, resolution=51, alpha=1, color='grey'))
             ax.set_xlim([np.min(xx)-0.5, np.max(xx)+0.5])
             ax.set_ylim([np.min(xx)-0.5, np.max(xx)+0.5])       
         
@@ -181,9 +183,9 @@ def plot_correlations_microimage(detector, list_of_g, list_of_g_out=None, averag
             row = idx_scalar // 6
             col = idx_scalar % 6
             ax = axs[row, col]
-            for i in xx:
-                if not any(np.array_equal(i, pt) for pt in used_ch):
-                    ax.add_patch(CirclePolygon((i[0], i[1]), radius=0.45, resolution=51, alpha=0.7, color='white'))
+            for i, x_single in enumerate(xx):
+                if not any(np.array_equal(x_single, pt) for pt in used_ch) and active_elements[i]:
+                    ax.add_patch(CirclePolygon((x_single[0], x_single[1]), radius=0.45, resolution=51, alpha=0.7, color='white'))
     
     while idx_scalar < n_columns * n_rows:
         row = idx_scalar // 6
