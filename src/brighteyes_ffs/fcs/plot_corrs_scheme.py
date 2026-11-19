@@ -132,6 +132,8 @@ def plot_correlations_microimage(detector, list_of_g, list_of_g_out=None, averag
                 
     else:
         #cross all
+        if averaging is None:
+            return
         if len(averaging) > 6:
             n_rows = int(np.ceil(len(averaging)/6))
             n_columns = 6
@@ -171,7 +173,8 @@ def plot_correlations_microimage(detector, list_of_g, list_of_g_out=None, averag
             for j in range(int(len(all_ch)/2)):
                 c0 = all_ch[2*j]
                 c1 = all_ch[2*j+1]
-                ax.arrow(xx[c0, 0], xx[c0, 1], xx[c1, 0]-xx[c0, 0], xx[c1, 1]-xx[c0, 1], width=0.1, length_includes_head=True, alpha=0.5, color='k', zorder=10, edgecolor=None)
+                if c0 != c1:
+                    ax.arrow(xx[c0, 0], xx[c0, 1], xx[c1, 0]-xx[c0, 0], xx[c1, 1]-xx[c0, 1], width=0.1, length_includes_head=True, alpha=0.5, color='k', zorder=10, edgecolor=None)
         
             plt.xticks([])
             plt.yticks([])
